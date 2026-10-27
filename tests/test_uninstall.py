@@ -5,11 +5,17 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 TOOLS_DIR = Path(__file__).resolve().parent.parent / "tools"
+if str(TOOLS_DIR) not in sys.path:
+    sys.path.insert(0, str(TOOLS_DIR))
+
 INSTALLER = TOOLS_DIR / "install.py"
 UNINSTALLER = TOOLS_DIR / "uninstall.py"
 TOOLKIT_ROOT = TOOLS_DIR.parent
+
+from uninstall import apply_uninstall_plan, create_uninstall_plan, validate_uninstall_preconditions
 
 
 class UninstallerTests(unittest.TestCase):
@@ -349,6 +355,465 @@ class UninstallerTests(unittest.TestCase):
                 self.assertTrue(link.is_symlink())
             finally:
                 ws.chmod(original_mode)
+
+    # -------------------------------------------------------------------------
+    # Cross-installation integration tests (P-00002)
+    # -------------------------------------------------------------------------
+
+    def _create_mock_checkout(self, root: Path, layout: str = "current", skills: tuple[str, ...] = ("merge-master",)) -> Path:
+        root.mkdir(parents=True, exist_ok=True)
+        (root / "AGENTS.md").write_text("# Authoritative AGENTS.md\n", encoding="utf-8")
+        if layout == "current":
+            tools_dir = root / "tools"
+            tools_dir.mkdir(parents=True, exist_ok=True)
+            (tools_dir / "install.py").write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+        else:
+            (root / "install.py").write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+
+        for skill in skills:
+            skill_dir = root / "skills" / skill
+            skill_dir.mkdir(parents=True, exist_ok=True)
+            (skill_dir / "SKILL.md").write_text(f"# {skill}\n", encoding="utf-8")
+        return root
+
+    def test_cross_checkout_uninstall_removes_links_from_another_checkout(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td).resolve()
+            checkout_a = self._create_mock_checkout(base / "checkout_a", layout="current", skills=("merge-master",))
+            ws = base / "workspace"
+            skills_dir = ws / ".agents" / "skills"
+            skills_dir.mkdir(parents=True)
+
+            link = skills_dir / "merge-master"
+            link.symlink_to(
+                os.path.relpath(checkout_a / "skills" / "merge-master", link.parent),
+                target_is_directory=True,
+            )
+            agents_md = ws / "AGENTS.md"
+            agents_md.write_text(
+                "# Project\n<!-- agent-toolkit:begin -->\nManaged\n<!-- agent-toolkit:end -->\n",
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [sys.executable, str(UNINSTALLER), "--workspace", str(ws), "--yes"],
+                check=True, capture_output=True, text=True,
+            )
+            self.assertIn("Uninstalled agent-toolkit", result.stdout)
+            self.assertFalse(link.exists(follow_symlinks=False))
+            self.assertFalse((ws / ".agents").exists())
+            self.assertEqual(agents_md.read_text(encoding="utf-8"), "# Project\n")
+
+    def test_legacy_embedded_checkout_scenario(self):
+        with tempfile.TemporaryDirectory() as td:
+            ws = Path(td).resolve()
+            legacy_checkout = self._create_mock_checkout(
+                ws / "agent-toolkit",
+                layout="legacy",
+                skills=("merge-master", "pragmatic-functional-programming"),
+            )
+            skills_dir = ws / ".agents" / "skills"
+            skills_dir.mkdir(parents=True)
+
+            link1 = skills_dir / "merge-master"
+            link1.symlink_to(
+                os.path.relpath(legacy_checkout / "skills" / "merge-master", link1.parent),
+                target_is_directory=True,
+            )
+            link2 = skills_dir / "pragmatic-functional-programming"
+            link2.symlink_to(
+                os.path.relpath(legacy_checkout / "skills" / "pragmatic-functional-programming", link2.parent),
+                target_is_directory=True,
+            )
+            agents_md = ws / "AGENTS.md"
+            agents_md.write_text(
+                "<!-- agent-toolkit:begin -->\nManaged\n<!-- agent-toolkit:end -->\n",
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [sys.executable, str(UNINSTALLER), "--workspace", str(ws), "--yes"],
+                check=True, capture_output=True, text=True,
+            )
+            self.assertIn("Uninstalled agent-toolkit", result.stdout)
+            self.assertFalse(link1.exists(follow_symlinks=False))
+            self.assertFalse(link2.exists(follow_symlinks=False))
+            self.assertFalse((ws / ".agents").exists())
+            self.assertFalse(agents_md.exists())
+
+    def test_cross_checkout_uninstall_followed_by_install(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td).resolve()
+            checkout_a = self._create_mock_checkout(base / "checkout_a", layout="legacy", skills=("merge-master",))
+            ws = base / "workspace"
+            skills_dir = ws / ".agents" / "skills"
+            skills_dir.mkdir(parents=True)
+
+            link = skills_dir / "merge-master"
+            link.symlink_to(
+                os.path.relpath(checkout_a / "skills" / "merge-master", link.parent),
+                target_is_directory=True,
+            )
+            agents_md = ws / "AGENTS.md"
+            agents_md.write_text("# Project\n", encoding="utf-8")
+
+            # 1. Uninstall with current toolkit
+            un_result = subprocess.run(
+                [sys.executable, str(UNINSTALLER), "--workspace", str(ws), "--yes"],
+                check=True, capture_output=True, text=True,
+            )
+            self.assertIn("Uninstalled agent-toolkit", un_result.stdout)
+            self.assertFalse(link.exists(follow_symlinks=False))
+
+            # 2. Install with current toolkit succeeds without link collision
+            in_result = subprocess.run(
+                [sys.executable, str(INSTALLER), "--workspace", str(ws), "--yes"],
+                check=True, capture_output=True, text=True,
+            )
+            self.assertIn("Installed agent-toolkit", in_result.stdout)
+            installed_link = skills_dir / "merge-master"
+            self.assertTrue(installed_link.is_symlink())
+            self.assertEqual(installed_link.resolve(), (TOOLKIT_ROOT / "skills" / "merge-master").resolve())
+
+    def test_preview_source_checkout_and_recognition_kind_in_dry_run(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td).resolve()
+            checkout_a = self._create_mock_checkout(base / "checkout_a", layout="legacy", skills=("merge-master",))
+            ws = base / "workspace"
+            skills_dir = ws / ".agents" / "skills"
+            skills_dir.mkdir(parents=True)
+
+            link = skills_dir / "merge-master"
+            link.symlink_to(
+                os.path.relpath(checkout_a / "skills" / "merge-master", link.parent),
+                target_is_directory=True,
+            )
+
+            result = subprocess.run(
+                [sys.executable, str(UNINSTALLER), "--workspace", str(ws), "--dry-run"],
+                check=True, capture_output=True, text=True,
+            )
+            self.assertIn("Remove skill link:", result.stdout)
+            self.assertIn(f"source: {checkout_a}", result.stdout)
+            self.assertIn("recognition: legacy agent-toolkit checkout", result.stdout)
+            self.assertTrue(link.is_symlink())
+
+    def test_interactive_decline_makes_no_changes_cross_checkout(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td).resolve()
+            checkout_a = self._create_mock_checkout(base / "checkout_a", layout="current", skills=("merge-master",))
+            ws = base / "workspace"
+            skills_dir = ws / ".agents" / "skills"
+            skills_dir.mkdir(parents=True)
+
+            link = skills_dir / "merge-master"
+            link.symlink_to(
+                os.path.relpath(checkout_a / "skills" / "merge-master", link.parent),
+                target_is_directory=True,
+            )
+
+            result = subprocess.run(
+                [sys.executable, str(UNINSTALLER), "--workspace", str(ws)],
+                input="n\n", check=True, capture_output=True, text=True,
+            )
+            self.assertIn("No changes made.", result.stdout)
+            self.assertTrue(link.is_symlink())
+
+    def test_removes_links_from_multiple_recognized_checkouts_in_one_workspace(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td).resolve()
+            checkout_legacy = self._create_mock_checkout(base / "legacy", layout="legacy", skills=("skill-one",))
+            checkout_current = self._create_mock_checkout(base / "current", layout="current", skills=("skill-two",))
+            ws = base / "workspace"
+            skills_dir = ws / ".agents" / "skills"
+            skills_dir.mkdir(parents=True)
+
+            link1 = skills_dir / "skill-one"
+            link1.symlink_to(
+                os.path.relpath(checkout_legacy / "skills" / "skill-one", link1.parent),
+                target_is_directory=True,
+            )
+            link2 = skills_dir / "skill-two"
+            link2.symlink_to(
+                os.path.relpath(checkout_current / "skills" / "skill-two", link2.parent),
+                target_is_directory=True,
+            )
+
+            result = subprocess.run(
+                [sys.executable, str(UNINSTALLER), "--workspace", str(ws), "--yes"],
+                check=True, capture_output=True, text=True,
+            )
+            self.assertIn("Uninstalled agent-toolkit", result.stdout)
+            self.assertFalse(link1.exists(follow_symlinks=False))
+            self.assertFalse(link2.exists(follow_symlinks=False))
+            self.assertFalse((ws / ".agents").exists())
+
+    def test_preserves_unrelated_entries_under_agents_during_cross_checkout_uninstall(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td).resolve()
+            checkout_a = self._create_mock_checkout(base / "checkout_a", layout="current", skills=("merge-master",))
+            ws = base / "workspace"
+            skills_dir = ws / ".agents" / "skills"
+            skills_dir.mkdir(parents=True)
+
+            link = skills_dir / "merge-master"
+            link.symlink_to(
+                os.path.relpath(checkout_a / "skills" / "merge-master", link.parent),
+                target_is_directory=True,
+            )
+            custom_config = ws / ".agents" / "config.json"
+            custom_config.write_text("{}", encoding="utf-8")
+
+            result = subprocess.run(
+                [sys.executable, str(UNINSTALLER), "--workspace", str(ws), "--yes"],
+                check=True, capture_output=True, text=True,
+            )
+            self.assertIn("Uninstalled agent-toolkit", result.stdout)
+            self.assertFalse(link.exists(follow_symlinks=False))
+            self.assertFalse(skills_dir.exists())
+            self.assertTrue(custom_config.is_file())
+            self.assertTrue((ws / ".agents").is_dir())
+
+    def test_rollback_restores_cross_checkout_links_with_original_raw_targets_on_failure(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td).resolve()
+            checkout_a = self._create_mock_checkout(base / "checkout_a", layout="legacy", skills=("merge-master",))
+            ws = base / "workspace"
+            skills_dir = ws / ".agents" / "skills"
+            skills_dir.mkdir(parents=True)
+
+            raw_rel = os.path.relpath(checkout_a / "skills" / "merge-master", skills_dir)
+            link = skills_dir / "merge-master"
+            link.symlink_to(raw_rel, target_is_directory=True)
+
+            agents_md = ws / "AGENTS.md"
+            agents_md.write_text(
+                "<!-- agent-toolkit:begin -->\nManaged\n<!-- agent-toolkit:end -->\n",
+                encoding="utf-8",
+            )
+
+            original_mode = ws.stat().st_mode
+            ws.chmod(0o555)
+            try:
+                result = subprocess.run(
+                    [sys.executable, str(UNINSTALLER), "--workspace", str(ws), "--yes"],
+                    capture_output=True, text=True,
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertTrue(link.is_symlink())
+                self.assertEqual(os.readlink(link), raw_rel)
+            finally:
+                ws.chmod(original_mode)
+
+    def test_unproven_dangling_link_produces_warning_and_is_preserved(self):
+        with tempfile.TemporaryDirectory() as td:
+            ws = Path(td).resolve()
+            skills_dir = ws / ".agents" / "skills"
+            skills_dir.mkdir(parents=True)
+
+            dangling_link = skills_dir / "ghost-skill"
+            dangling_link.symlink_to("/nonexistent/deleted/checkout/skills/ghost-skill", target_is_directory=True)
+
+            result = subprocess.run(
+                [sys.executable, str(UNINSTALLER), "--workspace", str(ws), "--yes"],
+                check=True, capture_output=True, text=True,
+            )
+            self.assertEqual(result.returncode, 0)
+            self.assertIn("Warning: preserving unproven dangling skill link:", result.stdout)
+            self.assertIn("Already uninstalled", result.stdout)
+            self.assertTrue(dangling_link.is_symlink())
+            self.assertTrue(skills_dir.is_dir())
+
+    # -------------------------------------------------------------------------
+    # Workspace change / precondition tests (P-00002)
+    # -------------------------------------------------------------------------
+
+    def test_replace_planned_symlink_with_regular_file_aborts_and_preserves_file(self):
+        with tempfile.TemporaryDirectory() as td:
+            ws = Path(td).resolve()
+            subprocess.run(
+                [sys.executable, str(INSTALLER), "--workspace", str(ws), "--yes"],
+                check=True, capture_output=True, text=True,
+            )
+            plan = create_uninstall_plan(TOOLKIT_ROOT, ws)
+            link_path = ws / ".agents" / "skills" / "review"
+            link_path.unlink()
+            link_path.write_text("regular file", encoding="utf-8")
+
+            with self.assertRaises(ValueError) as ctx:
+                apply_uninstall_plan(plan)
+            self.assertIn("workspace changed since preview", str(ctx.exception))
+            self.assertTrue(link_path.is_file() and not link_path.is_symlink())
+            self.assertEqual(link_path.read_text(encoding="utf-8"), "regular file")
+            self.assertTrue((ws / "AGENTS.md").exists())
+
+    def test_repoint_planned_symlink_aborts_and_preserves_new_target(self):
+        with tempfile.TemporaryDirectory() as td:
+            ws = Path(td).resolve()
+            subprocess.run(
+                [sys.executable, str(INSTALLER), "--workspace", str(ws), "--yes"],
+                check=True, capture_output=True, text=True,
+            )
+            plan = create_uninstall_plan(TOOLKIT_ROOT, ws)
+            link_path = ws / ".agents" / "skills" / "review"
+            link_path.unlink()
+            link_path.symlink_to("/opt/repointed/target", target_is_directory=True)
+
+            with self.assertRaises(ValueError) as ctx:
+                apply_uninstall_plan(plan)
+            self.assertIn("workspace changed since preview", str(ctx.exception))
+            self.assertTrue(link_path.is_symlink())
+            self.assertEqual(os.readlink(link_path), "/opt/repointed/target")
+
+    def test_delete_planned_symlink_aborts_cleanly(self):
+        with tempfile.TemporaryDirectory() as td:
+            ws = Path(td).resolve()
+            subprocess.run(
+                [sys.executable, str(INSTALLER), "--workspace", str(ws), "--yes"],
+                check=True, capture_output=True, text=True,
+            )
+            plan = create_uninstall_plan(TOOLKIT_ROOT, ws)
+            link_path = ws / ".agents" / "skills" / "review"
+            link_path.unlink()
+
+            with self.assertRaises(ValueError) as ctx:
+                apply_uninstall_plan(plan)
+            self.assertIn("workspace changed since preview", str(ctx.exception))
+            self.assertTrue((ws / "AGENTS.md").exists())
+
+    def test_edit_agents_md_after_planning_aborts_and_preserves_new_content(self):
+        with tempfile.TemporaryDirectory() as td:
+            ws = Path(td).resolve()
+            subprocess.run(
+                [sys.executable, str(INSTALLER), "--workspace", str(ws), "--yes"],
+                check=True, capture_output=True, text=True,
+            )
+            plan = create_uninstall_plan(TOOLKIT_ROOT, ws)
+            agents_md = ws / "AGENTS.md"
+            agents_md.write_text("# Project edited after preview\n", encoding="utf-8")
+
+            with self.assertRaises(ValueError) as ctx:
+                apply_uninstall_plan(plan)
+            self.assertIn("workspace changed since preview", str(ctx.exception))
+            self.assertEqual(agents_md.read_text(encoding="utf-8"), "# Project edited after preview\n")
+            self.assertTrue((ws / ".agents" / "skills" / "review").is_symlink())
+
+    def test_replace_agents_md_with_symlink_aborts_and_preserves_target(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td).resolve()
+            ws = base / "workspace"
+            ws.mkdir()
+            subprocess.run(
+                [sys.executable, str(INSTALLER), "--workspace", str(ws), "--yes"],
+                check=True, capture_output=True, text=True,
+            )
+            plan = create_uninstall_plan(TOOLKIT_ROOT, ws)
+            secret_file = base / "secret.txt"
+            secret_file.write_text("secret content", encoding="utf-8")
+            agents_md = ws / "AGENTS.md"
+            agents_md.unlink()
+            agents_md.symlink_to(secret_file)
+
+            with self.assertRaises(ValueError) as ctx:
+                apply_uninstall_plan(plan)
+            self.assertIn("workspace changed since preview", str(ctx.exception))
+            self.assertTrue(agents_md.is_symlink())
+            self.assertEqual(secret_file.read_text(encoding="utf-8"), "secret content")
+
+    def test_repeated_precondition_failure_after_earlier_link_removal_rolls_back(self):
+        with tempfile.TemporaryDirectory() as td:
+            ws = Path(td).resolve()
+            subprocess.run(
+                [sys.executable, str(INSTALLER), "--workspace", str(ws), "--yes"],
+                check=True, capture_output=True, text=True,
+            )
+            plan = create_uninstall_plan(TOOLKIT_ROOT, ws)
+            self.assertGreater(len(plan.links), 1)
+
+            first_link = plan.links[0]
+            first_raw_target = first_link.raw_target
+            orig_unlink = Path.unlink
+
+            # Simulate concurrent edit to AGENTS.md happening right after first link is unlinked
+            def unlink_hook(self_path, *args, **kwargs):
+                orig_unlink(self_path, *args, **kwargs)
+                if self_path == first_link.path:
+                    (ws / "AGENTS.md").write_text("# Concurrent edit!\n", encoding="utf-8")
+
+            with patch.object(Path, "unlink", side_effect=unlink_hook, autospec=True):
+                with self.assertRaises((ValueError, RuntimeError)):
+                    apply_uninstall_plan(plan)
+
+            # Verify rollback restored first_link
+            self.assertTrue(first_link.path.is_symlink())
+            self.assertEqual(os.readlink(first_link.path), first_raw_target)
+
+    def test_initial_precondition_failure_causes_no_filesystem_mutation(self):
+        with tempfile.TemporaryDirectory() as td:
+            ws = Path(td).resolve()
+            subprocess.run(
+                [sys.executable, str(INSTALLER), "--workspace", str(ws), "--yes"],
+                check=True, capture_output=True, text=True,
+            )
+            plan = create_uninstall_plan(TOOLKIT_ROOT, ws)
+            first_link = plan.links[0]
+            first_raw = first_link.raw_target
+
+            # Modify another link
+            last_link = plan.links[-1]
+            last_link.path.unlink()
+            last_link.path.symlink_to("/modified/target", target_is_directory=True)
+
+            with self.assertRaises(ValueError):
+                apply_uninstall_plan(plan)
+
+            # Confirm first_link was never deleted or touched
+            self.assertTrue(first_link.path.is_symlink())
+            self.assertEqual(os.readlink(first_link.path), first_raw)
+
+    def test_dangling_agents_symlink_aborts_and_preserves_agents_md(self):
+        with tempfile.TemporaryDirectory() as td:
+            ws = Path(td).resolve()
+            agents_md = ws / "AGENTS.md"
+            content = "# Project rules\n\n<!-- agent-toolkit:begin -->\nManaged\n<!-- agent-toolkit:end -->\n"
+            agents_md.write_text(content, encoding="utf-8")
+
+            plan = create_uninstall_plan(TOOLKIT_ROOT, ws)
+            self.assertEqual(len(plan.links), 0)
+
+            # Introduce dangling .agents symlink
+            dangling_agents = ws / ".agents"
+            dangling_agents.symlink_to("/nonexistent/target/path", target_is_directory=True)
+            self.assertTrue(dangling_agents.is_symlink())
+            self.assertFalse(dangling_agents.exists())
+
+            with self.assertRaises(ValueError) as ctx:
+                apply_uninstall_plan(plan)
+            self.assertIn("workspace changed since preview", str(ctx.exception))
+            self.assertEqual(agents_md.read_text(encoding="utf-8"), content)
+
+    def test_dangling_agents_skills_symlink_aborts_and_preserves_agents_md(self):
+        with tempfile.TemporaryDirectory() as td:
+            ws = Path(td).resolve()
+            agents_md = ws / "AGENTS.md"
+            content = "# Project rules\n\n<!-- agent-toolkit:begin -->\nManaged\n<!-- agent-toolkit:end -->\n"
+            agents_md.write_text(content, encoding="utf-8")
+
+            plan = create_uninstall_plan(TOOLKIT_ROOT, ws)
+            self.assertEqual(len(plan.links), 0)
+
+            # Introduce real .agents directory and dangling .agents/skills symlink
+            agents_dir = ws / ".agents"
+            agents_dir.mkdir()
+            dangling_skills = agents_dir / "skills"
+            dangling_skills.symlink_to("/nonexistent/target/path", target_is_directory=True)
+            self.assertTrue(dangling_skills.is_symlink())
+            self.assertFalse(dangling_skills.exists())
+
+            with self.assertRaises(ValueError) as ctx:
+                apply_uninstall_plan(plan)
+            self.assertIn("workspace changed since preview", str(ctx.exception))
+            self.assertEqual(agents_md.read_text(encoding="utf-8"), content)
 
 
 if __name__ == "__main__":

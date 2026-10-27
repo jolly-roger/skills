@@ -97,6 +97,30 @@ class AgentsFileTests(unittest.TestCase):
         self.assertIn("-line1", diff_text)
         self.assertIn("+line2", diff_text)
 
+    # -------------------------------------------------------------------------
+    # Whitespace preservation tests (P-00002)
+    # -------------------------------------------------------------------------
+
+    def test_preserve_two_trailing_spaces_markdown_hard_break(self):
+        content = f"# Heading\nLine with break  \n\n{BEGIN}\n# Managed\n{END}\n"
+        self.assertEqual(removed_content(content), "# Heading\nLine with break  \n")
+
+    def test_preserve_trailing_tab_on_nonblank_project_authored_line(self):
+        content = f"# Heading\nLine with tab\t\n\n{BEGIN}\n# Managed\n{END}\n"
+        self.assertEqual(removed_content(content), "# Heading\nLine with tab\t\n")
+
+    def test_preserve_indented_project_content_after_managed_block(self):
+        content = f"{BEGIN}\n# Managed\n{END}\n\n    def code():\n        pass\n"
+        self.assertEqual(removed_content(content), "    def code():\n        pass\n")
+
+    def test_normalize_whitespace_only_separator_lines_without_retaining_separators(self):
+        content = f"# Before\n   \n\t\n{BEGIN}\n# Managed\n{END}\n\t\n   \n# After\n"
+        self.assertEqual(removed_content(content), "# Before\n\n# After\n")
+
+    def test_return_empty_content_when_only_whitespace_and_managed_block_exist(self):
+        content = f"   \n\t\n{BEGIN}\n# Managed\n{END}\n\t\n   \n"
+        self.assertEqual(removed_content(content), "")
+
 
 if __name__ == "__main__":
     unittest.main()

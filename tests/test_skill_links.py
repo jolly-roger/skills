@@ -9,9 +9,14 @@ if str(TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(TOOLS_DIR))
 
 from common.skill_links import (
+    CandidateInspection,
     OwnedSkillLink,
+    SkillLinkFacts,
+    classify_skill_link,
+    classify_workspace_skill_links,
     discover_toolkit_skills,
     find_owned_skill_links,
+    inspect_skill_link,
     install_links,
     planned_install_links,
     restore_skill_links,
@@ -108,13 +113,16 @@ class SkillLinksTests(unittest.TestCase):
             local_file = ws_skills / "README.txt"
             local_file.write_text("note", encoding="utf-8")
 
-            owned = find_owned_skill_links(toolkit, workspace)
+            owned, warnings = find_owned_skill_links(toolkit, workspace)
             owned_names = [o.path.name for o in owned]
             self.assertEqual(sorted(owned_names), ["skill-a", "skill-removed"])
+            self.assertEqual(warnings, [])
 
-            # Verify raw_target is preserved
+            # Verify raw_target, source_root, and recognition_kind are recorded
             for item in owned:
                 self.assertEqual(item.raw_target, os.readlink(item.path))
+                self.assertEqual(item.source_root, toolkit.resolve())
+                self.assertEqual(item.recognition_kind, "current agent-toolkit checkout")
 
     def test_restore_skill_links_recreates_symlinks(self):
         with tempfile.TemporaryDirectory() as td:
@@ -135,6 +143,204 @@ class SkillLinksTests(unittest.TestCase):
             self.assertEqual(failures, [])
             self.assertTrue(link_path.is_symlink())
             self.assertEqual(os.readlink(link_path), raw_target)
+
+    # -------------------------------------------------------------------------
+    # Ownership classification unit tests (P-00002)
+    # -------------------------------------------------------------------------
+
+    def test_classify_active_link_into_current_checkout(self):
+        toolkit_skills = Path("/mock/toolkit/skills")
+        facts = SkillLinkFacts(
+            path=Path("/mock/workspace/.agents/skills/review"),
+            raw_target="../../toolkit/skills/review",
+            resolved_destination=toolkit_skills / "review",
+            target_exists=True,
+            candidate=None,
+        )
+        classification = classify_skill_link(facts, toolkit_skills)
+        self.assertEqual(classification.category, "current")
+        self.assertIsNotNone(classification.owned_link)
+        self.assertEqual(classification.owned_link.source_root, Path("/mock/toolkit"))
+        self.assertEqual(classification.owned_link.recognition_kind, "current agent-toolkit checkout")
+        self.assertIsNone(classification.warning)
+
+    def test_classify_dangling_link_targeting_current_checkout(self):
+        toolkit_skills = Path("/mock/toolkit/skills")
+        facts = SkillLinkFacts(
+            path=Path("/mock/workspace/.agents/skills/deleted-skill"),
+            raw_target="../../toolkit/skills/deleted-skill",
+            resolved_destination=toolkit_skills / "deleted-skill",
+            target_exists=False,
+            candidate=None,
+        )
+        classification = classify_skill_link(facts, toolkit_skills)
+        self.assertEqual(classification.category, "current")
+        self.assertIsNotNone(classification.owned_link)
+        self.assertEqual(classification.owned_link.source_root, Path("/mock/toolkit"))
+        self.assertEqual(classification.owned_link.recognition_kind, "current agent-toolkit checkout")
+        self.assertIsNone(classification.warning)
+
+    def test_classify_active_link_into_another_current_layout_checkout(self):
+        toolkit_skills = Path("/mock/toolkit/skills")
+        candidate_root = Path("/other/agent-toolkit")
+        facts = SkillLinkFacts(
+            path=Path("/mock/workspace/.agents/skills/merge-master"),
+            raw_target="../../../other/agent-toolkit/skills/merge-master",
+            resolved_destination=candidate_root / "skills" / "merge-master",
+            target_exists=True,
+            candidate=CandidateInspection(
+                root=candidate_root,
+                agents_is_file=True,
+                skills_is_real_dir=True,
+                skill_md_is_file=True,
+                tools_install_is_file=True,
+                legacy_install_is_file=False,
+            ),
+        )
+        classification = classify_skill_link(facts, toolkit_skills)
+        self.assertEqual(classification.category, "recognized")
+        self.assertIsNotNone(classification.owned_link)
+        self.assertEqual(classification.owned_link.source_root, candidate_root)
+        self.assertEqual(classification.owned_link.recognition_kind, "current-layout agent-toolkit checkout")
+        self.assertIsNone(classification.warning)
+
+    def test_classify_active_link_into_another_legacy_layout_checkout(self):
+        toolkit_skills = Path("/mock/toolkit/skills")
+        candidate_root = Path("/other/agent-toolkit")
+        facts = SkillLinkFacts(
+            path=Path("/mock/workspace/.agents/skills/merge-master"),
+            raw_target="../../../other/agent-toolkit/skills/merge-master",
+            resolved_destination=candidate_root / "skills" / "merge-master",
+            target_exists=True,
+            candidate=CandidateInspection(
+                root=candidate_root,
+                agents_is_file=True,
+                skills_is_real_dir=True,
+                skill_md_is_file=True,
+                tools_install_is_file=False,
+                legacy_install_is_file=True,
+            ),
+        )
+        classification = classify_skill_link(facts, toolkit_skills)
+        self.assertEqual(classification.category, "recognized")
+        self.assertIsNotNone(classification.owned_link)
+        self.assertEqual(classification.owned_link.source_root, candidate_root)
+        self.assertEqual(classification.owned_link.recognition_kind, "legacy agent-toolkit checkout")
+        self.assertIsNone(classification.warning)
+
+    def test_reject_candidate_whose_destination_basename_differs(self):
+        toolkit_skills = Path("/mock/toolkit/skills")
+        candidate_root = Path("/other/agent-toolkit")
+        facts = SkillLinkFacts(
+            path=Path("/mock/workspace/.agents/skills/my-alias"),
+            raw_target="../../../other/agent-toolkit/skills/actual-skill",
+            resolved_destination=candidate_root / "skills" / "actual-skill",
+            target_exists=True,
+            candidate=CandidateInspection(
+                root=candidate_root,
+                agents_is_file=True,
+                skills_is_real_dir=True,
+                skill_md_is_file=True,
+                tools_install_is_file=True,
+                legacy_install_is_file=False,
+            ),
+        )
+        classification = classify_skill_link(facts, toolkit_skills)
+        self.assertEqual(classification.category, "foreign")
+        self.assertIsNone(classification.owned_link)
+        self.assertIsNone(classification.warning)
+
+    def test_reject_candidate_without_agents_md(self):
+        toolkit_skills = Path("/mock/toolkit/skills")
+        candidate_root = Path("/other/repo")
+        facts = SkillLinkFacts(
+            path=Path("/mock/workspace/.agents/skills/skill-x"),
+            raw_target="../../../other/repo/skills/skill-x",
+            resolved_destination=candidate_root / "skills" / "skill-x",
+            target_exists=True,
+            candidate=CandidateInspection(
+                root=candidate_root,
+                agents_is_file=False,
+                skills_is_real_dir=True,
+                skill_md_is_file=True,
+                tools_install_is_file=True,
+                legacy_install_is_file=False,
+            ),
+        )
+        classification = classify_skill_link(facts, toolkit_skills)
+        self.assertEqual(classification.category, "foreign")
+        self.assertIsNone(classification.owned_link)
+
+    def test_reject_candidate_without_referenced_skill_md(self):
+        toolkit_skills = Path("/mock/toolkit/skills")
+        candidate_root = Path("/other/repo")
+        facts = SkillLinkFacts(
+            path=Path("/mock/workspace/.agents/skills/skill-x"),
+            raw_target="../../../other/repo/skills/skill-x",
+            resolved_destination=candidate_root / "skills" / "skill-x",
+            target_exists=True,
+            candidate=CandidateInspection(
+                root=candidate_root,
+                agents_is_file=True,
+                skills_is_real_dir=True,
+                skill_md_is_file=False,
+                tools_install_is_file=True,
+                legacy_install_is_file=False,
+            ),
+        )
+        classification = classify_skill_link(facts, toolkit_skills)
+        self.assertEqual(classification.category, "foreign")
+        self.assertIsNone(classification.owned_link)
+
+    def test_reject_candidate_without_either_recognized_installer_path(self):
+        toolkit_skills = Path("/mock/toolkit/skills")
+        candidate_root = Path("/other/repo")
+        facts = SkillLinkFacts(
+            path=Path("/mock/workspace/.agents/skills/skill-x"),
+            raw_target="../../../other/repo/skills/skill-x",
+            resolved_destination=candidate_root / "skills" / "skill-x",
+            target_exists=True,
+            candidate=CandidateInspection(
+                root=candidate_root,
+                agents_is_file=True,
+                skills_is_real_dir=True,
+                skill_md_is_file=True,
+                tools_install_is_file=False,
+                legacy_install_is_file=False,
+            ),
+        )
+        classification = classify_skill_link(facts, toolkit_skills)
+        self.assertEqual(classification.category, "foreign")
+        self.assertIsNone(classification.owned_link)
+
+    def test_preserve_arbitrary_foreign_symlink(self):
+        toolkit_skills = Path("/mock/toolkit/skills")
+        facts = SkillLinkFacts(
+            path=Path("/mock/workspace/.agents/skills/external"),
+            raw_target="/opt/custom-skills/external",
+            resolved_destination=Path("/opt/custom-skills/external"),
+            target_exists=True,
+            candidate=None,
+        )
+        classification = classify_skill_link(facts, toolkit_skills)
+        self.assertEqual(classification.category, "foreign")
+        self.assertIsNone(classification.owned_link)
+        self.assertIsNone(classification.warning)
+
+    def test_preserve_unproven_dangling_link_outside_current_checkout_and_produce_warning(self):
+        toolkit_skills = Path("/mock/toolkit/skills")
+        facts = SkillLinkFacts(
+            path=Path("/mock/workspace/.agents/skills/ghost-skill"),
+            raw_target="/deleted/path/skills/ghost-skill",
+            resolved_destination=Path("/deleted/path/skills/ghost-skill"),
+            target_exists=False,
+            candidate=None,
+        )
+        classification = classify_skill_link(facts, toolkit_skills)
+        self.assertEqual(classification.category, "unproven_dangling")
+        self.assertIsNone(classification.owned_link)
+        self.assertIsNotNone(classification.warning)
+        self.assertIn("unproven dangling skill link", classification.warning)
 
 
 if __name__ == "__main__":

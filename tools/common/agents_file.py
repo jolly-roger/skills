@@ -39,6 +39,34 @@ def updated_content(existing: str, block: str) -> str:
     return existing[:start] + block.rstrip("\n") + existing[end:]
 
 
+def strip_boundary_blank_lines(prefix: str, suffix: str) -> str:
+    """Combine retained prefix and suffix around a removed managed block.
+
+    Preserves spaces and tabs on project-authored nonblank lines.
+    """
+    prefix_lines = prefix.splitlines(keepends=True)
+    while prefix_lines and not prefix_lines[-1].strip():
+        prefix_lines.pop()
+
+    suffix_lines = suffix.splitlines(keepends=True)
+    while suffix_lines and not suffix_lines[0].strip():
+        suffix_lines.pop(0)
+
+    if not prefix_lines and not suffix_lines:
+        return ""
+
+    if prefix_lines and not suffix_lines:
+        prefix_clean = "".join(prefix_lines[:-1]) + prefix_lines[-1].rstrip("\r\n")
+        return prefix_clean + "\n"
+
+    if not prefix_lines and suffix_lines:
+        return "".join(suffix_lines)
+
+    prefix_clean = "".join(prefix_lines[:-1]) + prefix_lines[-1].rstrip("\r\n")
+    suffix_clean = "".join(suffix_lines)
+    return f"{prefix_clean}\n\n{suffix_clean}"
+
+
 def removed_content(existing: str) -> str:
     """Return AGENTS.md content without the validated managed block."""
     validate_markers(existing)
@@ -50,23 +78,7 @@ def removed_content(existing: str) -> str:
     prefix = existing[:start]
     suffix = existing[end:]
 
-    prefix_clean = prefix.rstrip()
-    suffix_lines = suffix.splitlines(keepends=True)
-    first_content_idx = 0
-    while first_content_idx < len(suffix_lines) and not suffix_lines[first_content_idx].strip():
-        first_content_idx += 1
-    suffix_clean = "".join(suffix_lines[first_content_idx:])
-
-    if not prefix_clean and not suffix_clean:
-        return ""
-
-    if prefix_clean and not suffix_clean:
-        return prefix_clean + "\n"
-
-    if not prefix_clean and suffix_clean:
-        return suffix_clean
-
-    return f"{prefix_clean}\n\n{suffix_clean}"
+    return strip_boundary_blank_lines(prefix, suffix)
 
 
 def diff_content(before: str, after: str, target: Path) -> list[str]:

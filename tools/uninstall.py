@@ -3,6 +3,7 @@
 
 import argparse
 from dataclasses import dataclass
+import os
 from pathlib import Path
 import sys
 
@@ -27,6 +28,7 @@ class UninstallPlan:
     before_content: str
     after_content: str
     links: tuple[OwnedSkillLink, ...]
+    warnings: tuple[str, ...] = ()
 
     @property
     def has_changes(self) -> bool:
@@ -55,18 +57,115 @@ def create_uninstall_plan(toolkit_root: Path, workspace: Path) -> UninstallPlan:
         else:
             agents_action = "rewrite"
 
-    links = tuple(find_owned_skill_links(toolkit_root, workspace))
+    links, warnings = find_owned_skill_links(toolkit_root, workspace)
     return UninstallPlan(
         workspace=workspace,
         agents_path=target,
         agents_action=agents_action,
         before_content=before,
         after_content=after,
-        links=links,
+        links=tuple(links),
+        warnings=tuple(warnings),
     )
 
 
+def validate_uninstall_preconditions(plan: UninstallPlan) -> None:
+    """Validate all workspace state preconditions before applying the plan."""
+    agents_dir = plan.workspace / ".agents"
+    skills_dir = agents_dir / "skills"
+
+    if agents_dir.is_symlink() or skills_dir.is_symlink():
+        raise ValueError("workspace changed since preview; rerun the uninstaller")
+
+    if plan.links:
+        if not agents_dir.is_dir() or not skills_dir.is_dir():
+            raise ValueError("workspace changed since preview; rerun the uninstaller")
+    else:
+        if agents_dir.exists() and not agents_dir.is_dir():
+            raise ValueError("workspace changed since preview; rerun the uninstaller")
+        if skills_dir.exists() and not skills_dir.is_dir():
+            raise ValueError("workspace changed since preview; rerun the uninstaller")
+
+    for link in plan.links:
+        if not link.path.is_symlink():
+            raise ValueError("workspace changed since preview; rerun the uninstaller")
+        try:
+            raw = os.readlink(link.path)
+        except OSError:
+            raise ValueError("workspace changed since preview; rerun the uninstaller")
+        if raw != link.raw_target:
+            raise ValueError("workspace changed since preview; rerun the uninstaller")
+
+    if plan.agents_path.is_symlink():
+        raise ValueError("workspace changed since preview; rerun the uninstaller")
+
+    if plan.agents_action in ("rewrite", "remove"):
+        if not plan.agents_path.is_file() or plan.agents_path.is_symlink():
+            raise ValueError("workspace changed since preview; rerun the uninstaller")
+        try:
+            current_content = plan.agents_path.read_text(encoding="utf-8")
+        except OSError:
+            raise ValueError("workspace changed since preview; rerun the uninstaller")
+        if current_content != plan.before_content:
+            raise ValueError("workspace changed since preview; rerun the uninstaller")
+
+
+def apply_uninstall_plan(plan: UninstallPlan) -> None:
+    """Apply plan mutations with whole-plan validation, step checks, and rollback."""
+    validate_uninstall_preconditions(plan)
+
+    agents_dir = plan.workspace / ".agents"
+    skills_dir = agents_dir / "skills"
+
+    removed_links: list[OwnedSkillLink] = []
+    try:
+        for link in plan.links:
+            if not link.path.is_symlink():
+                raise ValueError(f"workspace changed before removing {link.path}; rerun the uninstaller")
+            try:
+                raw = os.readlink(link.path)
+            except OSError as err:
+                raise ValueError(f"workspace changed before removing {link.path}; rerun the uninstaller") from err
+            if raw != link.raw_target:
+                raise ValueError(f"workspace changed before removing {link.path}; rerun the uninstaller")
+
+            link.path.unlink()
+            removed_links.append(link)
+
+        if plan.agents_action in ("rewrite", "remove"):
+            if agents_dir.is_symlink() or skills_dir.is_symlink():
+                raise ValueError("workspace changed before modifying AGENTS.md; rerun the uninstaller")
+            if plan.agents_path.is_symlink() or not plan.agents_path.is_file():
+                raise ValueError("workspace changed before modifying AGENTS.md; rerun the uninstaller")
+            try:
+                current_content = plan.agents_path.read_text(encoding="utf-8")
+            except OSError as err:
+                raise ValueError("workspace changed before modifying AGENTS.md; rerun the uninstaller") from err
+            if current_content != plan.before_content:
+                raise ValueError("workspace changed before modifying AGENTS.md; rerun the uninstaller")
+
+            if plan.agents_action == "rewrite":
+                write_atomically(plan.agents_path, plan.after_content)
+            elif plan.agents_action == "remove":
+                plan.agents_path.unlink()
+    except (OSError, ValueError) as error:
+        rollback_failures = restore_skill_links(removed_links)
+        if rollback_failures:
+            details = "\n".join(f"  {item.path}: {err}" for item, err in rollback_failures)
+            raise RuntimeError(f"{error}\nFailed to roll back some skill links:\n{details}") from error
+        raise
+
+    try:
+        remove_empty_directory(skills_dir)
+        remove_empty_directory(agents_dir)
+    except OSError as error:
+        sys.stderr.write(f"Warning: directory cleanup failed: {error}\n")
+
+
 def preview_plan(plan: UninstallPlan) -> None:
+    for warning in plan.warnings:
+        print(f"Warning: {warning}")
+
     if plan.agents_action == "rewrite":
         diff = diff_content(plan.before_content, plan.after_content, plan.agents_path)
         sys.stdout.writelines(diff)
@@ -74,7 +173,9 @@ def preview_plan(plan: UninstallPlan) -> None:
         print(f"Remove {plan.agents_path} (managed block was only content)")
 
     for link in plan.links:
-        print(f"Remove skill link: {link.path} -> {link.raw_target}")
+        print(f"Remove skill link: {link.path}")
+        print(f"  source: {link.source_root}")
+        print(f"  recognition: {link.recognition_kind}")
 
 
 def main() -> int:
@@ -101,6 +202,8 @@ def main() -> int:
         parser.error(str(error))
 
     if not plan.has_changes:
+        for warning in plan.warnings:
+            print(f"Warning: {warning}")
         print(f"Already uninstalled: {workspace}")
         return 0
 
@@ -117,30 +220,10 @@ def main() -> int:
             print("No changes made.")
             return 0
 
-    removed_links: list[OwnedSkillLink] = []
     try:
-        for link in plan.links:
-            link.path.unlink()
-            removed_links.append(link)
-
-        if plan.agents_action == "rewrite":
-            write_atomically(plan.agents_path, plan.after_content)
-        elif plan.agents_action == "remove":
-            plan.agents_path.unlink()
-    except OSError as error:
-        rollback_failures = restore_skill_links(removed_links)
-        if rollback_failures:
-            details = "\n".join(f"  {item.path}: {err}" for item, err in rollback_failures)
-            parser.error(f"{error}\nFailed to roll back some skill links:\n{details}")
+        apply_uninstall_plan(plan)
+    except (OSError, ValueError, RuntimeError) as error:
         parser.error(str(error))
-
-    agents_dir = workspace / ".agents"
-    skills_dir = agents_dir / "skills"
-    try:
-        remove_empty_directory(skills_dir)
-        remove_empty_directory(agents_dir)
-    except OSError as error:
-        sys.stderr.write(f"Warning: directory cleanup failed: {error}\n")
 
     print(f"Uninstalled agent-toolkit from {workspace}")
     return 0

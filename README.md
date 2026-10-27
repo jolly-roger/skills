@@ -39,7 +39,7 @@ To remove agent-toolkit-managed rules and skill links from a workspace:
 python3 /path/to/agent-toolkit/tools/uninstall.py --workspace /path/to/workspace
 ```
 
-The uninstaller removes the managed block from the workspace `AGENTS.md` while preserving project-owned rules. If the managed block was the only content, `AGENTS.md` is removed. It removes skill symlinks owned by this toolkit checkout and cleans up empty `.agents/skills` and `.agents` directories. Project-owned skills and foreign symlinks are preserved. Self-uninstallation preserves the repository's authoritative `AGENTS.md`.
+The uninstaller removes the managed block from the workspace `AGENTS.md` while preserving project-owned rules. If the managed block was the only content, `AGENTS.md` is removed. It removes skill symlinks owned by this toolkit checkout as well as links installed from another existing `agent-toolkit` checkout (legacy or current layout). Unproven dangling links whose source checkouts are missing or unrecognizable are preserved with a warning. Clean up removes empty `.agents/skills` and `.agents` directories. Project-owned skills and foreign symlinks are preserved. Self-uninstallation preserves the repository's authoritative `AGENTS.md`.
 
 Both `tools/install.py` and `tools/uninstall.py` support `--dry-run` to preview changes and `--yes` for unattended execution; see `--help` on each tool for option details.
 
