@@ -5,10 +5,16 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from install import BEGIN, END, updated_content
+# Add tools to sys.path for direct imports
+TOOLS_DIR = Path(__file__).resolve().parent.parent / "tools"
+if str(TOOLS_DIR) not in sys.path:
+    sys.path.insert(0, str(TOOLS_DIR))
+
+from common.agents_file import BEGIN, END, updated_content
 
 
-INSTALLER = Path(__file__).with_name("install.py")
+INSTALLER = TOOLS_DIR / "install.py"
+TOOLKIT_ROOT = TOOLS_DIR.parent
 
 
 class InstallerTests(unittest.TestCase):
@@ -32,7 +38,7 @@ class InstallerTests(unittest.TestCase):
             ):
                 link = Path(directory) / ".agents" / "skills" / name
                 self.assertTrue(link.is_symlink())
-                self.assertEqual(link.resolve(), INSTALLER.parent / "skills" / name)
+                self.assertEqual(link.resolve(), (TOOLKIT_ROOT / "skills" / name).resolve())
                 self.assertTrue((link / "SKILL.md").is_file())
             self.assertEqual(installed, target.read_text(encoding="utf-8"))
             self.assertIn("Already up to date", second.stdout)
@@ -94,12 +100,15 @@ class InstallerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             toolkit = Path(directory) / "agent-toolkit"
             toolkit.mkdir()
-            shutil.copy2(INSTALLER, toolkit / "install.py")
-            shutil.copy2(INSTALLER.parent / "AGENTS.md", toolkit / "AGENTS.md")
-            shutil.copytree(INSTALLER.parent / "skills", toolkit / "skills")
+            tools_dir = toolkit / "tools"
+            tools_dir.mkdir()
+            shutil.copy2(INSTALLER, tools_dir / "install.py")
+            shutil.copytree(TOOLS_DIR / "common", tools_dir / "common")
+            shutil.copy2(TOOLKIT_ROOT / "AGENTS.md", toolkit / "AGENTS.md")
+            shutil.copytree(TOOLKIT_ROOT / "skills", toolkit / "skills")
             original = (toolkit / "AGENTS.md").read_bytes()
             command = [
-                sys.executable, str(toolkit / "install.py"),
+                sys.executable, str(tools_dir / "install.py"),
                 "--workspace", str(toolkit), "--yes",
             ]
 
