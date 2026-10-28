@@ -1,16 +1,5 @@
 # Development Rules
 
-## SCSS Rules
-
-- The main class in a component SCSS file must use the component name in kebab case.
-- All child classes must be nested according to the component hierarchy and usage.
-- Avoid flat, loosely named selectors when the styles belong to a specific component.
-- Always use `rem` units in SCSS, with `1rem = 16px`.
-
-## JSX Rules
-
-- JSX markup ternary operators must not contain nested ternary operators.
-
 ## Pragmatic Functional Programming Rules
 
 For every coding task, including new code generation, feature implementation, bug fixes, modifications, optimization, tests, code review, and refactoring, apply pragmatic functional programming in any language.
@@ -76,6 +65,17 @@ Prioritize correctness, project conventions, readability, maintainability, simpl
   - All MongoDB operations must target only the local database referenced by `db`.
   - Do not read, query, aggregate, export, mutate, or inspect any other MongoDB database, including `admin`, `config`, and `local`, unless I explicitly request it.
   - Before any MongoDB write operation, state the exact target database and collection.
+
+## SCSS Rules
+
+- The main class in a component SCSS file must use the component name in kebab case.
+- All child classes must be nested according to the component hierarchy and usage.
+- Avoid flat, loosely named selectors when the styles belong to a specific component.
+- Always use `rem` units in SCSS, with `1rem = 16px`.
+
+## JSX Rules
+
+- JSX markup ternary operators must not contain nested ternary operators.
 
 ## README Guidance
 
