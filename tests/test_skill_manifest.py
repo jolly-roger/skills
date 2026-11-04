@@ -8,6 +8,7 @@ TOOLS_DIR = Path(__file__).resolve().parent.parent / "tools"
 if str(TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(TOOLS_DIR))
 
+from common.identity import CANONICAL_IDENTITY, LEGACY_IDENTITY
 from common.skill_manifest import (
     FORMAT_NAME,
     CURRENT_VERSION,
@@ -16,6 +17,8 @@ from common.skill_manifest import (
     SkillManifestEntry,
     compare_skill_inventory,
     create_manifest,
+    inspect_workspace_manifests,
+    migrate_manifest_to_canonical,
     parse_manifest,
     serialize_manifest,
     validate_entry_relative_path,
@@ -64,11 +67,96 @@ class SkillManifestTests(unittest.TestCase):
         serialized = serialize_manifest(manifest)
         parsed = parse_manifest(serialized)
 
-        self.assertEqual(parsed.format, FORMAT_NAME)
+        self.assertEqual(parsed.format, CANONICAL_IDENTITY.manifest_format)
         self.assertEqual(parsed.version, CURRENT_VERSION)
         self.assertIn("sample", parsed.skills)
         self.assertEqual(parsed.skills["sample"].entries, entries)
         self.assertEqual(serialize_manifest(parsed), serialized)
+
+    def test_legacy_manifest_parsing_and_migration(self):
+        entries = (
+            ManifestEntry(path="SKILL.md", type="file", sha256="a" * 64),
+        )
+        skill_entry = SkillManifestEntry(name="sample", target="skills/sample", entries=entries)
+        legacy_manifest = create_manifest({"sample": skill_entry}, identity=LEGACY_IDENTITY)
+        self.assertEqual(legacy_manifest.format, LEGACY_IDENTITY.manifest_format)
+
+        serialized = serialize_manifest(legacy_manifest)
+        parsed = parse_manifest(serialized)
+        self.assertEqual(parsed.format, LEGACY_IDENTITY.manifest_format)
+
+        migrated = migrate_manifest_to_canonical(parsed)
+        self.assertEqual(migrated.format, CANONICAL_IDENTITY.manifest_format)
+        self.assertEqual(migrated.skills["sample"].entries, entries)
+
+    def test_inspect_workspace_manifests_dual_conflict(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ws = Path(tmpdir)
+            agents = ws / ".agents"
+            agents.mkdir()
+            (agents / CANONICAL_IDENTITY.manifest_filename).write_text(
+                json.dumps({"format": CANONICAL_IDENTITY.manifest_format, "version": 1, "skills": {}}),
+                encoding="utf-8",
+            )
+            (agents / LEGACY_IDENTITY.manifest_filename).write_text(
+                json.dumps({"format": LEGACY_IDENTITY.manifest_format, "version": 1, "skills": {}}),
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(ValueError) as ctx:
+                inspect_workspace_manifests(ws)
+            self.assertIn("both canonical", str(ctx.exception))
+
+    def test_inspect_workspace_manifests_symlink_rejection(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ws = Path(tmpdir)
+            agents = ws / ".agents"
+            agents.mkdir()
+            target_manifest = ws / "custom-manifest.json"
+            target_manifest.write_text("{}", encoding="utf-8")
+            (agents / CANONICAL_IDENTITY.manifest_filename).symlink_to(target_manifest)
+
+            with self.assertRaises(ValueError) as ctx:
+                inspect_workspace_manifests(ws)
+            self.assertIn("refusing to operate through a symlinked manifest path", str(ctx.exception))
+
+    def test_inspect_workspace_manifests_directory_rejection(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ws = Path(tmpdir)
+            agents = ws / ".agents"
+            agents.mkdir()
+            (agents / CANONICAL_IDENTITY.manifest_filename).mkdir()
+
+            with self.assertRaises(ValueError) as ctx:
+                inspect_workspace_manifests(ws)
+            self.assertIn("not a regular file", str(ctx.exception))
+
+    def test_reject_mismatched_filename_and_format_identities(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ws = Path(tmpdir)
+            agents = ws / ".agents"
+            agents.mkdir()
+            # Canonical filename with legacy format
+            (agents / CANONICAL_IDENTITY.manifest_filename).write_text(
+                json.dumps({"format": LEGACY_IDENTITY.manifest_format, "version": 1, "skills": {}}),
+                encoding="utf-8",
+            )
+            with self.assertRaises(ValueError) as ctx:
+                inspect_workspace_manifests(ws)
+            self.assertIn("manifest format mismatch", str(ctx.exception))
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ws = Path(tmpdir)
+            agents = ws / ".agents"
+            agents.mkdir()
+            # Legacy filename with canonical format
+            (agents / LEGACY_IDENTITY.manifest_filename).write_text(
+                json.dumps({"format": CANONICAL_IDENTITY.manifest_format, "version": 1, "skills": {}}),
+                encoding="utf-8",
+            )
+            with self.assertRaises(ValueError) as ctx:
+                inspect_workspace_manifests(ws)
+            self.assertIn("manifest format mismatch", str(ctx.exception))
 
     def test_reject_invalid_manifest(self):
         with self.assertRaises(ValueError):

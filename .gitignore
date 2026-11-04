@@ -1,4 +1,5 @@
 __pycache__/
 /.agents/skills/
 /.agents/agent-toolkit-manifest.json
+/.agents/jolly-roger-skills-manifest.json
 .obsidian/

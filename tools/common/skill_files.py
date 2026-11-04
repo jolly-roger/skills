@@ -193,9 +193,9 @@ def inspect_target_skill(target_dir: Path) -> TargetSkillSnapshot:
     )
 
 
-def discover_toolkit_skills(toolkit_root: Path) -> list[SourceSkillSnapshot]:
-    """Discover and snapshot all valid source skills in toolkit_root / 'skills'."""
-    skills_dir = toolkit_root / "skills"
+def discover_repository_skills(repository_root: Path) -> list[SourceSkillSnapshot]:
+    """Discover and snapshot all valid source skills in repository_root / 'skills'."""
+    skills_dir = repository_root / "skills"
     if not skills_dir.is_dir() or skills_dir.is_symlink():
         return []
 
@@ -213,11 +213,11 @@ def discover_toolkit_skills(toolkit_root: Path) -> list[SourceSkillSnapshot]:
 def is_proven_current_checkout_link(
     link_path: Path,
     raw_target: str,
-    toolkit_root: Path,
+    repository_root: Path,
     expected_skill_name: str,
 ) -> bool:
     """Return True if link targets matching skill in running checkout lexically or resolved."""
-    current_target = (toolkit_root / "skills" / expected_skill_name).resolve()
+    current_target = (repository_root / "skills" / expected_skill_name).resolve()
 
     # Lexical destination
     try:

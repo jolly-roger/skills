@@ -1,4 +1,4 @@
-"""Filesystem helper utilities for agent-toolkit tools."""
+"""Filesystem helper utilities for skills tools."""
 
 import errno
 from pathlib import Path
