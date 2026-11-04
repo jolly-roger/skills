@@ -25,15 +25,16 @@ A centralized toolkit for distributing shared coding-agent rules, safety policie
   - [`pragmatic-functional-programming`](./skills/pragmatic-functional-programming/SKILL.md)
   - [`review`](./skills/review/SKILL.md)
   - [`review-diff`](./skills/review-diff/SKILL.md)
-- [`install.py`](./install.py) — updates the managed section of a workspace’s `AGENTS.md` and links skills into `.agents/skills/` while preserving project-specific instructions.
-- [`test_install.py`](./test_install.py) — verifies installer updates, repeatability, conflict handling, and preservation of existing workspace content.
+- [`tools/install.py`](./tools/install.py) — updates the managed section of a workspace’s `AGENTS.md` and links skills into `.agents/skills/` while preserving project-specific instructions.
+- [`tools/uninstall.py`](./tools/uninstall.py) — removes managed instructions and skill links from a workspace.
+- [`tests/`](./tests/) — test suite verifying installer and uninstaller updates, repeatability, conflict handling, and preservation of existing workspace content.
 
 ## Install shared rules
 
 Run the interactive installer from any directory:
 
 ```bash
-python3 /path/to/agent-toolkit/install.py --workspace /path/to/workspace
+python3 /path/to/agent-toolkit/tools/install.py --workspace /path/to/workspace
 ```
 
 When the toolkit is inside the workspace, `--workspace` can be omitted; the installer defaults to the toolkit's parent directory. It previews the root `AGENTS.md` change and the skill links, then asks before applying either. Project-specific instructions outside the `agent-toolkit` markers are preserved. Run the installer again after changing shared rules; it replaces only its marked section. A repeated install with no source changes does nothing.
@@ -41,24 +42,34 @@ When the toolkit is inside the workspace, `--workspace` can be omitted; the inst
 To use the toolkit while developing it, install it into its own repository:
 
 ```bash
-python3 install.py --workspace .
+python3 tools/install.py --workspace .
 ```
 
 Self-installation leaves the authoritative `AGENTS.md` unchanged and creates only the skill links under `.agents/skills/`. Those generated links are ignored by Git in this repository.
 
 Each skill in `skills/` gets a relative directory symlink at `<workspace>/.agents/skills/<name>`. Codex and Antigravity both discover workspace skills there. Existing local skills are never replaced; a name conflict stops installation so it can be resolved first. The links keep the toolkit as the single source for skill updates.
 
-Use `--dry-run` to preview changes or `--yes` for unattended installation. The installer requires Python 3 and no third-party packages.
+## Uninstall shared rules
+
+To remove agent-toolkit-managed rules and skill links from a workspace:
+
+```bash
+python3 /path/to/agent-toolkit/tools/uninstall.py --workspace /path/to/workspace
+```
+
+The uninstaller removes the managed block from the workspace `AGENTS.md` while preserving project-owned rules. If the managed block was the only content, `AGENTS.md` is removed. It removes skill symlinks owned by this toolkit checkout as well as links installed from another existing `agent-toolkit` checkout (legacy or current layout). Unproven dangling links whose source checkouts are missing or unrecognizable are preserved with a warning. Clean up removes empty `.agents/skills` and `.agents` directories. Project-owned skills and foreign symlinks are preserved. Self-uninstallation preserves the repository's authoritative `AGENTS.md`.
+
+Both `tools/install.py` and `tools/uninstall.py` support `--dry-run` to preview changes and `--yes` for unattended execution; see `--help` on each tool for option details.
 
 ## Testing
 
-Run the installer test suite:
+Run the test suite:
 
 ```bash
-python3 test_install.py
+python3 -m unittest discover tests
 ```
 
 ## Notes
 
 - This repository contains agent instructions, reusable skills, and installation tooling rather than application code.
-- Only the section between the `agent-toolkit` markers in a workspace’s `AGENTS.md` is managed by `install.py`.
+- Only the section between the `agent-toolkit` markers in a workspace’s `AGENTS.md` is managed by `tools/install.py`.
