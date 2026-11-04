@@ -5,6 +5,7 @@ import argparse
 from dataclasses import dataclass
 import os
 from pathlib import Path
+import shutil
 import sys
 
 # Ensure tools directory is in sys.path for direct execution
@@ -14,10 +15,30 @@ if str(TOOLS_DIR) not in sys.path:
 
 from common.agents_file import BEGIN, diff_content, removed_content, validate_markers
 from common.filesystem import remove_empty_directory, write_atomically
-from common.skill_links import OwnedSkillLink, find_owned_skill_links, restore_skill_links
-
+from common.skill_files import (
+    TargetSkillSnapshot,
+    inspect_target_skill,
+    is_proven_current_checkout_link,
+)
+from common.skill_manifest import (
+    MANIFEST_RELATIVE_PATH,
+    SkillManifest,
+    SkillManifestEntry,
+    compare_skill_inventory,
+    create_manifest,
+    parse_manifest,
+    serialize_manifest,
+)
 
 TOOLKIT = TOOLS_DIR.parent
+
+
+@dataclass(frozen=True)
+class PlannedSkillUninstall:
+    name: str
+    target_path: Path
+    action: str  # "remove_copy", "remove_legacy_link", "clean_stale_manifest"
+    raw_symlink: str | None = None
 
 
 @dataclass(frozen=True)
@@ -27,12 +48,44 @@ class UninstallPlan:
     agents_action: str  # "keep", "rewrite", "remove"
     before_content: str
     after_content: str
-    links: tuple[OwnedSkillLink, ...]
+    manifest_action: str  # "keep", "update", "remove"
+    before_manifest_raw: str | None
+    after_manifest: SkillManifest | None
+    skill_actions: tuple[PlannedSkillUninstall, ...]
     warnings: tuple[str, ...] = ()
 
     @property
     def has_changes(self) -> bool:
-        return self.agents_action != "keep" or len(self.links) > 0
+        return (
+            self.agents_action != "keep"
+            or self.manifest_action != "keep"
+            or len(self.skill_actions) > 0
+        )
+
+
+def validate_workspace_boundaries(workspace: Path) -> tuple[Path, Path, Path]:
+    agents_dir = workspace / ".agents"
+    skills_dir = agents_dir / "skills"
+    manifest_path = workspace / MANIFEST_RELATIVE_PATH
+
+    if agents_dir.is_symlink() or skills_dir.is_symlink() or manifest_path.is_symlink():
+        raise ValueError("refusing to uninstall through a symlinked .agents or manifest path")
+    if agents_dir.exists() and not agents_dir.is_dir():
+        raise ValueError(f"agents path is not a directory: {agents_dir}")
+    if skills_dir.exists() and not skills_dir.is_dir():
+        raise ValueError(f"skills path is not a directory: {skills_dir}")
+    if manifest_path.exists() and not manifest_path.is_file():
+        raise ValueError(f"manifest path is not a regular file: {manifest_path}")
+
+    return agents_dir, skills_dir, manifest_path
+
+
+def load_manifest(manifest_path: Path) -> tuple[SkillManifest | None, str | None]:
+    if not manifest_path.exists():
+        return None, None
+    raw_text = manifest_path.read_text(encoding="utf-8")
+    manifest = parse_manifest(raw_text)
+    return manifest, raw_text
 
 
 def create_uninstall_plan(toolkit_root: Path, workspace: Path) -> UninstallPlan:
@@ -40,7 +93,9 @@ def create_uninstall_plan(toolkit_root: Path, workspace: Path) -> UninstallPlan:
     if target.is_symlink():
         raise ValueError(f"refusing to operate on symlink: {target}")
 
+    agents_dir, skills_dir, manifest_path = validate_workspace_boundaries(workspace)
     self_uninstall = workspace.resolve() == toolkit_root.resolve()
+
     before = target.read_text(encoding="utf-8") if target.exists() else ""
     validate_markers(before)
 
@@ -57,104 +112,192 @@ def create_uninstall_plan(toolkit_root: Path, workspace: Path) -> UninstallPlan:
         else:
             agents_action = "rewrite"
 
-    links, warnings = find_owned_skill_links(toolkit_root, workspace)
+    manifest, before_manifest_raw = load_manifest(manifest_path)
+
+    skill_actions: list[PlannedSkillUninstall] = []
+    warnings: list[str] = []
+    retained_manifest_skills: dict[str, SkillManifestEntry] = {}
+
+    processed_names: set[str] = set()
+
+    # Process manifest skills first
+    if manifest is not None:
+        for name, m_skill in manifest.skills.items():
+            processed_names.add(name)
+            target_path = skills_dir / name
+            snap = inspect_target_skill(target_path) if target_path.exists() or target_path.is_symlink() else None
+
+            if snap is None or not snap.exists:
+                # Target is absent: clean stale manifest entry
+                skill_actions.append(PlannedSkillUninstall(
+                    name=name,
+                    target_path=target_path,
+                    action="clean_stale_manifest",
+                ))
+            elif snap.is_dir:
+                if compare_skill_inventory(m_skill.entries, snap.entries):
+                    # Exact managed copy -> remove
+                    skill_actions.append(PlannedSkillUninstall(
+                        name=name,
+                        target_path=target_path,
+                        action="remove_copy",
+                    ))
+                else:
+                    # Modified managed copy -> preserve and warn!
+                    retained_manifest_skills[name] = m_skill
+                    warnings.append(f"preserving modified managed skill copy: {target_path}")
+            else:
+                # Changed to a symlink or file
+                retained_manifest_skills[name] = m_skill
+                warnings.append(f"preserving modified managed skill (unexpected type): {target_path}")
+
+    # Check remaining entries in skills_dir for legacy links or unmanaged files
+    if skills_dir.is_dir():
+        for entry in sorted(skills_dir.iterdir()):
+            if entry.name in processed_names:
+                continue
+
+            if entry.is_symlink():
+                try:
+                    raw_target = os.readlink(entry)
+                except OSError:
+                    raw_target = ""
+
+                if is_proven_current_checkout_link(entry, raw_target, toolkit_root, entry.name):
+                    skill_actions.append(PlannedSkillUninstall(
+                        name=entry.name,
+                        target_path=entry,
+                        action="remove_legacy_link",
+                        raw_symlink=raw_target,
+                    ))
+                else:
+                    if not entry.exists():
+                        warnings.append(f"preserving unproven dangling skill link: {entry} -> {raw_target}")
+                    else:
+                        warnings.append(f"preserving unproven or foreign skill link: {entry}")
+            else:
+                # Unmanaged directory or file: preserve silently without warnings (project-owned)
+                pass
+
+    if manifest is not None:
+        if not retained_manifest_skills:
+            manifest_action = "remove"
+            after_manifest = None
+        else:
+            manifest_action = "update"
+            after_manifest = create_manifest(retained_manifest_skills)
+    else:
+        manifest_action = "keep"
+        after_manifest = None
+
     return UninstallPlan(
         workspace=workspace,
         agents_path=target,
         agents_action=agents_action,
         before_content=before,
         after_content=after,
-        links=tuple(links),
+        manifest_action=manifest_action,
+        before_manifest_raw=before_manifest_raw,
+        after_manifest=after_manifest,
+        skill_actions=tuple(skill_actions),
         warnings=tuple(warnings),
     )
 
 
-def validate_uninstall_preconditions(plan: UninstallPlan) -> None:
-    """Validate all workspace state preconditions before applying the plan."""
-    agents_dir = plan.workspace / ".agents"
-    skills_dir = agents_dir / "skills"
+def validate_uninstall_preconditions(plan: UninstallPlan, toolkit_root: Path) -> None:
+    agents_dir, skills_dir, manifest_path = validate_workspace_boundaries(plan.workspace)
 
-    if agents_dir.is_symlink() or skills_dir.is_symlink():
+    current_agents = plan.agents_path.read_text(encoding="utf-8") if plan.agents_path.exists() else ""
+    if current_agents != plan.before_content:
         raise ValueError("workspace changed since preview; rerun the uninstaller")
 
-    if plan.links:
-        if not agents_dir.is_dir() or not skills_dir.is_dir():
-            raise ValueError("workspace changed since preview; rerun the uninstaller")
-    else:
-        if agents_dir.exists() and not agents_dir.is_dir():
-            raise ValueError("workspace changed since preview; rerun the uninstaller")
-        if skills_dir.exists() and not skills_dir.is_dir():
-            raise ValueError("workspace changed since preview; rerun the uninstaller")
+    current_manifest_raw = manifest_path.read_text(encoding="utf-8") if manifest_path.exists() else None
+    if current_manifest_raw != plan.before_manifest_raw:
+        raise ValueError("workspace manifest changed since preview; rerun the uninstaller")
 
-    for link in plan.links:
-        if not link.path.is_symlink():
-            raise ValueError("workspace changed since preview; rerun the uninstaller")
-        try:
-            raw = os.readlink(link.path)
-        except OSError:
-            raise ValueError("workspace changed since preview; rerun the uninstaller")
-        if raw != link.raw_target:
-            raise ValueError("workspace changed since preview; rerun the uninstaller")
-
-    if plan.agents_path.is_symlink():
-        raise ValueError("workspace changed since preview; rerun the uninstaller")
-
-    if plan.agents_action in ("rewrite", "remove"):
-        if not plan.agents_path.is_file() or plan.agents_path.is_symlink():
-            raise ValueError("workspace changed since preview; rerun the uninstaller")
-        try:
-            current_content = plan.agents_path.read_text(encoding="utf-8")
-        except OSError:
-            raise ValueError("workspace changed since preview; rerun the uninstaller")
-        if current_content != plan.before_content:
-            raise ValueError("workspace changed since preview; rerun the uninstaller")
-
-
-def apply_uninstall_plan(plan: UninstallPlan) -> None:
-    """Apply plan mutations with whole-plan validation, step checks, and rollback."""
-    validate_uninstall_preconditions(plan)
-
-    agents_dir = plan.workspace / ".agents"
-    skills_dir = agents_dir / "skills"
-
-    removed_links: list[OwnedSkillLink] = []
-    try:
-        for link in plan.links:
-            if not link.path.is_symlink():
-                raise ValueError(f"workspace changed before removing {link.path}; rerun the uninstaller")
+    for action in plan.skill_actions:
+        if action.action == "remove_copy":
+            snap = inspect_target_skill(action.target_path)
+            if not snap.exists or not snap.is_dir:
+                raise ValueError(f"workspace changed before removing {action.target_path}; rerun the uninstaller")
+        elif action.action == "remove_legacy_link":
+            if not action.target_path.is_symlink():
+                raise ValueError(f"workspace changed before removing {action.target_path}; rerun the uninstaller")
             try:
-                raw = os.readlink(link.path)
+                raw = os.readlink(action.target_path)
             except OSError as err:
-                raise ValueError(f"workspace changed before removing {link.path}; rerun the uninstaller") from err
-            if raw != link.raw_target:
-                raise ValueError(f"workspace changed before removing {link.path}; rerun the uninstaller")
+                raise ValueError(f"workspace changed before removing {action.target_path}; rerun the uninstaller") from err
+            if raw != action.raw_symlink:
+                raise ValueError(f"workspace changed before removing {action.target_path}; rerun the uninstaller")
 
-            link.path.unlink()
-            removed_links.append(link)
+
+def apply_uninstall_plan(plan: UninstallPlan, toolkit_root: Path) -> None:
+    validate_uninstall_preconditions(plan, toolkit_root)
+
+    agents_dir = plan.workspace / ".agents"
+    skills_dir = agents_dir / "skills"
+    manifest_path = plan.workspace / MANIFEST_RELATIVE_PATH
+
+    backup_dir = agents_dir / ".uninstall_backup_tmp"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+
+    backups: list[tuple[Path, Path, str]] = []  # (target_path, backup_path, kind)
+
+    try:
+        # Move targets to backup
+        for action in plan.skill_actions:
+            if action.action == "remove_copy":
+                bk = backup_dir / f"{action.name}.bak"
+                action.target_path.rename(bk)
+                backups.append((action.target_path, bk, "dir"))
+            elif action.action == "remove_legacy_link":
+                bk = backup_dir / f"{action.name}.bak"
+                bk.symlink_to(action.raw_symlink)
+                action.target_path.unlink()
+                backups.append((action.target_path, bk, "symlink"))
+
+        # Update or remove AGENTS.md
+        if plan.agents_action == "rewrite":
+            write_atomically(plan.agents_path, plan.after_content)
+        elif plan.agents_action == "remove":
+            plan.agents_path.unlink()
+
+        # Update or remove manifest
+        if plan.manifest_action == "remove":
+            manifest_path.unlink(missing_ok=True)
+        elif plan.manifest_action == "update":
+            manifest_content = serialize_manifest(plan.after_manifest)
+            write_atomically(manifest_path, manifest_content)
+
+    except Exception as error:
+        # Rollback
+        for target, bk, kind in reversed(backups):
+            if bk.exists() or bk.is_symlink():
+                if target.exists() or target.is_symlink():
+                    if target.is_dir() and not target.is_symlink():
+                        shutil.rmtree(target, ignore_errors=True)
+                    else:
+                        target.unlink(missing_ok=True)
+                bk.rename(target)
 
         if plan.agents_action in ("rewrite", "remove"):
-            if agents_dir.is_symlink() or skills_dir.is_symlink():
-                raise ValueError("workspace changed before modifying AGENTS.md; rerun the uninstaller")
-            if plan.agents_path.is_symlink() or not plan.agents_path.is_file():
-                raise ValueError("workspace changed before modifying AGENTS.md; rerun the uninstaller")
-            try:
-                current_content = plan.agents_path.read_text(encoding="utf-8")
-            except OSError as err:
-                raise ValueError("workspace changed before modifying AGENTS.md; rerun the uninstaller") from err
-            if current_content != plan.before_content:
-                raise ValueError("workspace changed before modifying AGENTS.md; rerun the uninstaller")
+            if plan.before_content:
+                write_atomically(plan.agents_path, plan.before_content)
+            else:
+                plan.agents_path.unlink(missing_ok=True)
 
-            if plan.agents_action == "rewrite":
-                write_atomically(plan.agents_path, plan.after_content)
-            elif plan.agents_action == "remove":
-                plan.agents_path.unlink()
-    except (OSError, ValueError) as error:
-        rollback_failures = restore_skill_links(removed_links)
-        if rollback_failures:
-            details = "\n".join(f"  {item.path}: {err}" for item, err in rollback_failures)
-            raise RuntimeError(f"{error}\nFailed to roll back some skill links:\n{details}") from error
-        raise
+        if plan.before_manifest_raw is not None:
+            write_atomically(manifest_path, plan.before_manifest_raw)
+        else:
+            manifest_path.unlink(missing_ok=True)
 
+        shutil.rmtree(backup_dir, ignore_errors=True)
+        raise RuntimeError(f"uninstallation failed and was rolled back: {error}") from error
+
+    # Delete backups on success
+    shutil.rmtree(backup_dir, ignore_errors=True)
+
+    # Clean empty directories
     try:
         remove_empty_directory(skills_dir)
         remove_empty_directory(agents_dir)
@@ -172,10 +315,18 @@ def preview_plan(plan: UninstallPlan) -> None:
     elif plan.agents_action == "remove":
         print(f"Remove {plan.agents_path} (managed block was only content)")
 
-    for link in plan.links:
-        print(f"Remove skill link: {link.path}")
-        print(f"  source: {link.source_root}")
-        print(f"  recognition: {link.recognition_kind}")
+    for action in plan.skill_actions:
+        if action.action == "remove_copy":
+            print(f"Remove copied skill: {action.target_path}")
+        elif action.action == "remove_legacy_link":
+            print(f"Remove legacy skill link: {action.target_path}")
+        elif action.action == "clean_stale_manifest":
+            print(f"Clean stale manifest entry for missing skill: {action.name}")
+
+    if plan.manifest_action == "remove":
+        print(f"Remove manifest: {plan.workspace / MANIFEST_RELATIVE_PATH}")
+    elif plan.manifest_action == "update":
+        print(f"Update manifest: {plan.workspace / MANIFEST_RELATIVE_PATH}")
 
 
 def main() -> int:
@@ -221,7 +372,7 @@ def main() -> int:
             return 0
 
     try:
-        apply_uninstall_plan(plan)
+        apply_uninstall_plan(plan, TOOLKIT)
     except (OSError, ValueError, RuntimeError) as error:
         parser.error(str(error))
 

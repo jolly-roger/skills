@@ -1,3 +1,4 @@
 __pycache__/
 /.agents/skills/
+/.agents/agent-toolkit-manifest.json
 .obsidian/

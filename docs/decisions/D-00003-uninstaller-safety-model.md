@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Superseded
 
 ## Date
 
@@ -90,4 +90,4 @@ None
 
 ## Superseded by
 
-None
+- [D-00004: Copy Skills into Workspaces](./D-00004-copy-skills-into-workspaces.md)
