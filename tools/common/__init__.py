@@ -1,1 +1,1 @@
-"""Shared common modules for agent-toolkit tools."""
+"""Shared common modules for skills tools."""

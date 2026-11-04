@@ -1,6 +1,8 @@
-# agent-toolkit
+# 🏴‍☠️ Jolly Roger's Skills
 
-A centralized toolkit for distributing shared coding-agent rules, safety policies, and reusable workflow skills across Codex and Antigravity workspaces.
+*Code by the rules. Sail with the agents.*
+
+A centralized repository for distributing shared coding-agent rules, safety policies, and reusable workflow skills across Codex and Antigravity workspaces.
 
 ## Purpose
 
@@ -34,12 +36,12 @@ A centralized toolkit for distributing shared coding-agent rules, safety policie
 Run the interactive installer from any directory:
 
 ```bash
-python3 /path/to/agent-toolkit/tools/install.py --workspace /path/to/workspace
+python3 /path/to/skills/tools/install.py --workspace /path/to/workspace
 ```
 
-When the toolkit is inside the workspace, `--workspace` can be omitted; the installer defaults to the toolkit's parent directory. It previews the root `AGENTS.md` change and skill installations, then asks before applying either. Project-specific instructions outside the `agent-toolkit` markers are preserved. Run the installer again after changing shared rules or skills; it updates only managed content. A repeated install with no source changes does nothing.
+When the repository is inside the workspace, `--workspace` can be omitted; the installer defaults to the repository's parent directory. It previews the root `AGENTS.md` change and skill installations, then asks before applying either. Project-specific instructions outside the managed markers are preserved. Run the installer again after changing shared rules or skills; it updates only managed content. A repeated install with no source changes does nothing.
 
-To use the toolkit while developing it, install it into its own repository:
+To use the repository while developing it, install it into its own directory:
 
 ```bash
 python3 tools/install.py --workspace .
@@ -51,15 +53,19 @@ Each skill in `skills/` is copied as a self-contained directory at `<workspace>/
 
 ## Uninstall shared rules
 
-To remove agent-toolkit-managed rules and copied skills from a workspace:
+To remove managed rules and copied skills from a workspace:
 
 ```bash
-python3 /path/to/agent-toolkit/tools/uninstall.py --workspace /path/to/workspace
+python3 /path/to/skills/tools/uninstall.py --workspace /path/to/workspace
 ```
 
 The uninstaller removes the managed block from the workspace `AGENTS.md` while preserving project-owned rules. If the managed block was the only content, `AGENTS.md` is removed. It removes exact manifest-verified skill copies and provable legacy links from the current checkout. Locally modified skill copies, project-owned skills, and unproven symlinks are preserved with warnings. Clean up removes empty `.agents/skills` and `.agents` directories. Self-uninstallation preserves the repository's authoritative `AGENTS.md`.
 
 Both `tools/install.py` and `tools/uninstall.py` support `--dry-run` to preview changes and `--yes` for unattended execution; see `--help` on each tool for option details.
+
+## Requirements
+
+- Python 3.13 or 3.14 (syntax compatible with Python 3.10+ standard library). Tooling relies strictly on the Python standard library with no third-party dependencies.
 
 ## Testing
 
@@ -72,4 +78,4 @@ python3 -m unittest discover tests
 ## Notes
 
 - This repository contains agent instructions, reusable skills, and installation tooling rather than application code.
-- Only the section between the `agent-toolkit` markers in a workspace’s `AGENTS.md` is managed by `tools/install.py`.
+- Only the section between the managed markers in a workspace’s `AGENTS.md` is managed by `tools/install.py`.

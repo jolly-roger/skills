@@ -6,10 +6,16 @@ from pathlib import Path, PurePosixPath
 import re
 from typing import Any
 
-FORMAT_NAME = "agent-toolkit.skills"
+from common.identity import (
+    CANONICAL_IDENTITY,
+    LEGACY_IDENTITY,
+    InstallationIdentity,
+)
+
+FORMAT_NAME = CANONICAL_IDENTITY.manifest_format
 CURRENT_VERSION = 1
-MANIFEST_FILENAME = "agent-toolkit-manifest.json"
-MANIFEST_RELATIVE_PATH = Path(".agents") / MANIFEST_FILENAME
+MANIFEST_FILENAME = CANONICAL_IDENTITY.manifest_filename
+MANIFEST_RELATIVE_PATH = CANONICAL_IDENTITY.manifest_relative_path
 
 _SHA256_HEX_REGEX = re.compile(r"^[0-9a-f]{64}$")
 
@@ -57,6 +63,15 @@ class SkillManifest:
         return json.dumps(data, indent=2, sort_keys=True) + "\n"
 
 
+@dataclass(frozen=True)
+class WorkspaceManifestClassification:
+    kind: str  # "none", "canonical", "legacy"
+    identity: InstallationIdentity | None
+    manifest_path: Path | None
+    manifest: SkillManifest | None
+    raw_text: str | None
+
+
 def validate_skill_name(name: str) -> None:
     if not name or name in (".", "..") or "/" in name or "\\" in name:
         raise ValueError(f"invalid skill name: {name!r}")
@@ -76,15 +91,21 @@ def validate_entry_relative_path(rel_path: str) -> str:
     return normalized
 
 
-def create_manifest(skills: dict[str, SkillManifestEntry]) -> SkillManifest:
+def create_manifest(
+    skills: dict[str, SkillManifestEntry],
+    identity: InstallationIdentity = CANONICAL_IDENTITY,
+) -> SkillManifest:
     return SkillManifest(
-        format=FORMAT_NAME,
+        format=identity.manifest_format,
         version=CURRENT_VERSION,
         skills=dict(sorted(skills.items())),
     )
 
 
-def parse_manifest(raw_text: str) -> SkillManifest:
+def parse_manifest(
+    raw_text: str,
+    expected_identity: InstallationIdentity | None = None,
+) -> SkillManifest:
     try:
         data = json.loads(raw_text)
     except json.JSONDecodeError as err:
@@ -94,8 +115,14 @@ def parse_manifest(raw_text: str) -> SkillManifest:
         raise ValueError("manifest root must be a JSON object")
 
     manifest_format = data.get("format")
-    if manifest_format != FORMAT_NAME:
-        raise ValueError(f"unknown or invalid manifest format: {manifest_format!r}")
+    if expected_identity is not None:
+        if manifest_format != expected_identity.manifest_format:
+            raise ValueError(
+                f"manifest format mismatch: expected {expected_identity.manifest_format!r}, got {manifest_format!r}"
+            )
+    else:
+        if manifest_format not in (CANONICAL_IDENTITY.manifest_format, LEGACY_IDENTITY.manifest_format):
+            raise ValueError(f"unknown or invalid manifest format: {manifest_format!r}")
 
     version = data.get("version")
     if version != CURRENT_VERSION:
@@ -189,3 +216,64 @@ def compare_skill_inventory(
 ) -> bool:
     """Return True if target inventory matches manifest entries exactly."""
     return manifest_entries == target_entries
+
+
+def inspect_workspace_manifests(workspace: Path) -> WorkspaceManifestClassification:
+    """Inspect and classify canonical and legacy manifests in workspace.
+
+    Raises ValueError if both manifests exist, if either manifest path is a symlink
+    or non-regular file, or if manifest content fails schema/format validation.
+    """
+    canon_path = workspace / CANONICAL_IDENTITY.manifest_relative_path
+    legacy_path = workspace / LEGACY_IDENTITY.manifest_relative_path
+
+    if canon_path.is_symlink() or legacy_path.is_symlink():
+        raise ValueError("refusing to operate through a symlinked manifest path")
+
+    canon_exists = canon_path.exists()
+    legacy_exists = legacy_path.exists()
+
+    if canon_exists and not canon_path.is_file():
+        raise ValueError(f"canonical manifest path is not a regular file: {canon_path}")
+    if legacy_exists and not legacy_path.is_file():
+        raise ValueError(f"legacy manifest path is not a regular file: {legacy_path}")
+
+    if canon_exists and legacy_exists:
+        raise ValueError(
+            "workspace contains both canonical (jolly-roger-skills) and legacy (agent-toolkit) manifests"
+        )
+
+    if canon_exists:
+        raw = canon_path.read_text(encoding="utf-8")
+        manifest = parse_manifest(raw, expected_identity=CANONICAL_IDENTITY)
+        return WorkspaceManifestClassification(
+            kind="canonical",
+            identity=CANONICAL_IDENTITY,
+            manifest_path=canon_path,
+            manifest=manifest,
+            raw_text=raw,
+        )
+
+    if legacy_exists:
+        raw = legacy_path.read_text(encoding="utf-8")
+        manifest = parse_manifest(raw, expected_identity=LEGACY_IDENTITY)
+        return WorkspaceManifestClassification(
+            kind="legacy",
+            identity=LEGACY_IDENTITY,
+            manifest_path=legacy_path,
+            manifest=manifest,
+            raw_text=raw,
+        )
+
+    return WorkspaceManifestClassification(
+        kind="none",
+        identity=None,
+        manifest_path=None,
+        manifest=None,
+        raw_text=None,
+    )
+
+
+def migrate_manifest_to_canonical(manifest: SkillManifest) -> SkillManifest:
+    """Convert a valid legacy manifest to canonical format while preserving ownership records."""
+    return create_manifest(manifest.skills, identity=CANONICAL_IDENTITY)

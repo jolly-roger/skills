@@ -9,7 +9,7 @@ if str(TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(TOOLS_DIR))
 
 from common.skill_files import (
-    discover_toolkit_skills,
+    discover_repository_skills,
     hash_file_sha256,
     inspect_source_skill,
     inspect_target_skill,
@@ -71,8 +71,8 @@ class SkillFilesTests(unittest.TestCase):
 
     def test_is_proven_current_checkout_link(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            toolkit_root = Path(tmpdir) / "toolkit"
-            skills_dir = toolkit_root / "skills"
+            repo_root = Path(tmpdir) / "repo"
+            skills_dir = repo_root / "skills"
             (skills_dir / "test-skill").mkdir(parents=True)
 
             workspace = Path(tmpdir) / "workspace"
@@ -82,10 +82,10 @@ class SkillFilesTests(unittest.TestCase):
             link.symlink_to(rel_path)
 
             self.assertTrue(
-                is_proven_current_checkout_link(link, rel_path, toolkit_root, "test-skill")
+                is_proven_current_checkout_link(link, rel_path, repo_root, "test-skill")
             )
             self.assertFalse(
-                is_proven_current_checkout_link(link, rel_path, Path("/other/toolkit"), "test-skill")
+                is_proven_current_checkout_link(link, rel_path, Path("/other/repo"), "test-skill")
             )
 
 

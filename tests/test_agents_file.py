@@ -11,18 +11,21 @@ if str(TOOLS_DIR) not in sys.path:
 from common.agents_file import (
     BEGIN,
     END,
+    classify_managed_block,
     diff_content,
     managed_block,
     removed_content,
     updated_content,
     validate_markers,
 )
+from common.identity import CANONICAL_IDENTITY, LEGACY_IDENTITY
 
 
 class AgentsFileTests(unittest.TestCase):
     def test_validate_markers_valid(self):
         validate_markers("No markers")
         validate_markers(f"{BEGIN}\nManaged block\n{END}\n")
+        validate_markers(f"{LEGACY_IDENTITY.begin_marker}\nManaged block\n{LEGACY_IDENTITY.end_marker}\n")
 
     def test_reject_lone_begin_marker(self):
         with self.assertRaises(ValueError) as ctx:
@@ -44,8 +47,73 @@ class AgentsFileTests(unittest.TestCase):
             validate_markers(f"{BEGIN}\nBlock 1\n{END}\n{BEGIN}\nBlock 2\n{END}\n")
         self.assertIn("incomplete or duplicate", str(ctx.exception))
 
+    def test_reject_both_canonical_and_legacy_markers(self):
+        mixed = (
+            f"# Rules\n{BEGIN}\nCanonical\n{END}\n"
+            f"{LEGACY_IDENTITY.begin_marker}\nLegacy\n{LEGACY_IDENTITY.end_marker}\n"
+        )
+        with self.assertRaises(ValueError) as ctx:
+            validate_markers(mixed)
+        self.assertIn("both canonical", str(ctx.exception))
+
+    def test_migrate_legacy_block_to_canonical(self):
+        legacy = f"# Project\n\n{LEGACY_IDENTITY.begin_marker}\nOld block\n{LEGACY_IDENTITY.end_marker}\n\n# More"
+        new_block = f"{CANONICAL_IDENTITY.begin_marker}\nNew block\n{CANONICAL_IDENTITY.end_marker}\n"
+        updated = updated_content(legacy, new_block)
+
+        self.assertIn(CANONICAL_IDENTITY.begin_marker, updated)
+        self.assertIn(CANONICAL_IDENTITY.end_marker, updated)
+        self.assertNotIn("agent-toolkit", updated)
+        self.assertIn("# Project", updated)
+        self.assertIn("# More", updated)
+
+    def test_reject_updated_content_with_nested_legacy_in_canonical_block(self):
+        bad_block = (
+            f"{CANONICAL_IDENTITY.begin_marker}\n"
+            f"{LEGACY_IDENTITY.begin_marker}\nNested\n{LEGACY_IDENTITY.end_marker}\n"
+            f"{CANONICAL_IDENTITY.end_marker}\n"
+        )
+        with self.assertRaises(ValueError) as ctx:
+            updated_content("# Project\n", bad_block)
+        self.assertIn("both canonical", str(ctx.exception))
+
+    def test_reject_updated_content_with_mismatched_target_identity(self):
+        legacy_block = f"{LEGACY_IDENTITY.begin_marker}\nOld\n{LEGACY_IDENTITY.end_marker}\n"
+        with self.assertRaises(ValueError) as ctx:
+            updated_content("# Project\n", legacy_block, target_identity=CANONICAL_IDENTITY)
+        self.assertIn("valid jolly-roger-skills managed block", str(ctx.exception))
+
+    def test_reject_updated_content_with_incomplete_or_reversed_markers(self):
+        with self.assertRaises(ValueError):
+            updated_content("# Project\n", f"{CANONICAL_IDENTITY.begin_marker}\nNo end\n")
+        with self.assertRaises(ValueError):
+            updated_content("# Project\n", f"No begin\n{CANONICAL_IDENTITY.end_marker}\n")
+        with self.assertRaises(ValueError):
+            updated_content(
+                "# Project\n",
+                f"{CANONICAL_IDENTITY.end_marker}\nReversed\n{CANONICAL_IDENTITY.begin_marker}\n",
+            )
+
+    def test_reject_updated_content_with_duplicate_markers(self):
+        duplicate_block = (
+            f"{CANONICAL_IDENTITY.begin_marker}\nBlock 1\n{CANONICAL_IDENTITY.end_marker}\n"
+            f"{CANONICAL_IDENTITY.begin_marker}\nBlock 2\n{CANONICAL_IDENTITY.end_marker}\n"
+        )
+        with self.assertRaises(ValueError):
+            updated_content("# Project\n", duplicate_block)
+
+    def test_reject_updated_content_with_content_outside_markers(self):
+        outside_block = f"Extra pre\n{CANONICAL_IDENTITY.begin_marker}\nBlock\n{CANONICAL_IDENTITY.end_marker}\n"
+        with self.assertRaises(ValueError) as ctx:
+            updated_content("# Project\n", outside_block)
+        self.assertIn("contains content outside", str(ctx.exception))
+
     def test_remove_only_managed_block_returns_empty_content(self):
-        content = f"{BEGIN}\n# Toolkit rules\nRule 1\n{END}\n"
+        content = f"{BEGIN}\n# Shared rules\nRule 1\n{END}\n"
+        self.assertEqual(removed_content(content), "")
+
+    def test_remove_only_legacy_managed_block_returns_empty_content(self):
+        content = f"{LEGACY_IDENTITY.begin_marker}\n# Legacy toolkit rules\nRule 1\n{LEGACY_IDENTITY.end_marker}\n"
         self.assertEqual(removed_content(content), "")
 
     def test_preserve_content_before_managed_block(self):
@@ -66,7 +134,7 @@ class AgentsFileTests(unittest.TestCase):
         self.assertEqual(removed_content(content), expected)
 
     def test_return_unchanged_content_when_markers_absent(self):
-        content = "# Custom project rules\n\nNo toolkit markers here.\n"
+        content = "# Custom project rules\n\nNo managed markers here.\n"
         self.assertEqual(removed_content(content), content)
 
     def test_updated_content_appends_when_no_markers(self):
@@ -82,11 +150,11 @@ class AgentsFileTests(unittest.TestCase):
             f"# Project\n\n{BEGIN}\nNew\n{END}\n\n# Extra\n",
         )
 
-    def test_managed_block_reads_toolkit_agents_md(self):
+    def test_managed_block_reads_repository_agents_md(self):
         with tempfile.TemporaryDirectory() as td:
-            toolkit = Path(td)
-            (toolkit / "AGENTS.md").write_text("# Master Rules\n", encoding="utf-8")
-            block = managed_block(toolkit)
+            repo = Path(td)
+            (repo / "AGENTS.md").write_text("# Master Rules\n", encoding="utf-8")
+            block = managed_block(repo)
             self.assertEqual(block, f"{BEGIN}\n# Master Rules\n{END}\n")
 
     def test_diff_content_produces_unified_diff(self):
