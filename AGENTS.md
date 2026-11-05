@@ -19,11 +19,23 @@ Prioritize correctness, project conventions, readability, maintainability, simpl
 
 ## TypeScript Rules
 
-- Avoid using `Omit` when creating interfaces or types.
-- Use `Omit` only as a last resort when there is no practical alternative.
-- Prefer flat interfaces over deeply composed ones.
-- Split interfaces into smaller reusable interfaces when that improves clarity or reuse.
-- Use `type` only for plain combinations of interfaces that do not rely on helper types or advanced type composition.
+For every TypeScript and TSX coding task, load and apply `pragmatic-functional-programming` first as foundational guidance, then read and apply the `typescript` skill when it is accessible. Consult its reference documents selectively as relevant.
+
+The `pragmatic-functional-programming` skill has precedence wherever the two skills overlap. If `pragmatic-functional-programming` is unavailable, do not apply either the `typescript` skill or its TypeScript fallback rules.
+
+Apply these mandatory policies:
+
+- Prefer `interface` for named object contracts, especially public and domain-facing objects. An object `type` alias is permitted when an established project convention or TypeScript constraint makes it the clearer representation; do not convert existing code solely for stylistic uniformity.
+- Use `type` for unions, tuples, primitive aliases, mapped or conditional types, and shapes that are not naturally expressed as interfaces.
+- Avoid deriving domain and API models through `Omit` or chains of utility types. Prefer explicit contracts or genuinely meaningful shared interfaces.
+- Permit a narrow utility-type use in a local adapter, generic helper, or third-party integration only when it is clearer than an explicit duplicate contract and does not weaken domain semantics.
+- Prefer shallow, cohesive models, but preserve meaningful nested concepts rather than flattening them mechanically.
+
+When `pragmatic-functional-programming` is available but the `typescript` skill is not, apply these fallback rules:
+
+- Do not introduce `any`, TypeScript suppression directives, or weaker compiler or linter settings merely to silence errors.
+- Use `unknown`, narrowing, or runtime validation when a value crosses a trust boundary identified by `pragmatic-functional-programming`; do not rely on a TypeScript assertion as runtime validation.
+- Do not leave unintended floating promises; use TypeScript-aware tooling and explicit supervision for intentionally detached work.
 
 ## Git Safety
 

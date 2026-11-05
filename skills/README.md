@@ -12,6 +12,14 @@ Reusable workflows discovered by Codex and Antigravity when installed into a wor
   - [Errors and testing](./pragmatic-functional-programming/references/errors-and-testing.md)
 - [`review`](./review/SKILL.md) — performs context-aware code reviews covering changes, surrounding call sites, and touched components.
 - [`review-diff`](./review-diff/SKILL.md) — performs targeted diff reviews against the base branch.
+- [`typescript`](./typescript/SKILL.md) — specializes type modeling, safety, runtime boundaries, async execution, and tooling for TypeScript and TSX, requiring `pragmatic-functional-programming` as a foundational prerequisite. Includes supplemental reference guides:
+  - [Type design](./typescript/references/type-design.md)
+  - [Type safety and narrowing](./typescript/references/type-safety.md)
+  - [Functions, signatures, and flow](./typescript/references/functions.md)
+  - [Domain models and runtime boundaries](./typescript/references/data-modeling.md)
+  - [Async, concurrency, and cancellation](./typescript/references/async.md)
+  - [Modules and dependency boundaries](./typescript/references/modules.md)
+  - [Tooling, tests, and verification](./typescript/references/tooling.md)
 
 ## Adding a Skill
 
