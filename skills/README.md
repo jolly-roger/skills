@@ -4,14 +4,11 @@ Reusable workflows discovered by Codex and Antigravity when installed into a wor
 
 ## Available Skills
 
-- [`merge-master`](./merge-master/SKILL.md) — pulls the latest base branch and merges it into the current work branch without resolving conflicts automatically.
 - [`pragmatic-functional-programming`](./pragmatic-functional-programming/SKILL.md) — guides code design, refactoring, and review around pure calculations, explicit effects, and immutable boundaries. Includes supplemental reference guides:
   - [Foundations and decision examples](./pragmatic-functional-programming/references/foundations.md)
   - [Architecture and boundaries](./pragmatic-functional-programming/references/architecture.md)
   - [Composition and state](./pragmatic-functional-programming/references/composition-and-state.md)
   - [Errors and testing](./pragmatic-functional-programming/references/errors-and-testing.md)
-- [`review`](./review/SKILL.md) — performs context-aware code reviews covering changes, surrounding call sites, and touched components.
-- [`review-diff`](./review-diff/SKILL.md) — performs targeted diff reviews against the base branch.
 - [`typescript`](./typescript/SKILL.md) — specializes type modeling, safety, runtime boundaries, async execution, and tooling for TypeScript and TSX, requiring `pragmatic-functional-programming` as a foundational prerequisite. Includes supplemental reference guides:
   - [Type design](./typescript/references/type-design.md)
   - [Type safety and narrowing](./typescript/references/type-safety.md)
@@ -20,6 +17,9 @@ Reusable workflows discovered by Codex and Antigravity when installed into a wor
   - [Async, concurrency, and cancellation](./typescript/references/async.md)
   - [Modules and dependency boundaries](./typescript/references/modules.md)
   - [Tooling, tests, and verification](./typescript/references/tooling.md)
+- [`merge-master`](./merge-master/SKILL.md) — pulls the latest base branch and merges it into the current work branch without resolving conflicts automatically.
+- [`review`](./review/SKILL.md) — performs context-aware code reviews covering changes, surrounding call sites, and touched components.
+- [`review-diff`](./review-diff/SKILL.md) — performs targeted diff reviews against the base branch.
 
 ## Adding a Skill
 

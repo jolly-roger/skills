@@ -23,6 +23,7 @@ The TypeScript skill will be a dependent language specialization rather than a s
 - Align the replacement `AGENTS.md` section and the skill so they do not prescribe conflicting uses of `Omit`, interfaces, or type aliases.
 - Remove general functional-programming, architecture, mutation, dependency, error, and testing rules duplicated by the TypeScript skill or its references.
 - Document the new skill in the root and skills-level summaries.
+- Order both README skill lists with `pragmatic-functional-programming` first and `typescript` second, followed by every other skill.
 - Extend installer coverage so distribution of the TypeScript skill and its references is verified.
 - Validate the skill structure, reference routing, installation, repeatability, and complete test suite.
 
@@ -182,6 +183,8 @@ Update the root `README.md` only at the repository-summary level:
 
 Update `skills/README.md` with a short description of the TypeScript skill and links to its topic references, consistent with the existing pragmatic-functional-programming entry.
 
+In both README skill lists, place `pragmatic-functional-programming` first and `typescript` second. Preserve the TypeScript dependency note and the skills-level reference links, and place all remaining skills after these two entries. This dependency-first order takes precedence over alphabetical ordering.
+
 No new architecture decision is required because the integration uses the accepted copied-skill layout without changing distribution, ownership, or uninstall semantics.
 
 ### Testing boundaries
@@ -204,6 +207,7 @@ A semantic audit compared the original `raw-skills/typescript-skill/` guidance w
 10. Resolve the remaining traceability and scope findings. Split the aggregated entrypoint workflow/completion-checklist and tooling self-review rows into explicit concerns with independently verifiable mappings; audit the rest of the table for similarly opaque grouping. Restore the original complex-type decision test in TypeScript guidance or classify it accurately as delegated or intentionally excluded with rationale. Preserve explicit time, currency, identifier, and optionality modeling whenever domain correctness depends on those concepts, rather than limiting that guidance to untrusted input boundaries.
 11. Correct the restored currency guidance so it requires an explicit, precision-safe representation without universally prescribing integer minor units. Present integer minor units, decimal or arbitrary-precision values, and established domain value objects as context-dependent options; follow project conventions and domain requirements such as currency scale, range, arithmetic, serialization, and interoperability. Do not promote the original `totalCents` example into a universal policy.
 12. Restore the two original operational distinctions that are not materially supplied by the current foundational skill. Document that a timeout may only stop the caller from waiting unless it propagates cancellation to the underlying work, and require agents to verify the intended behavior. Document that a catch block should not exist solely to rethrow the same error unchanged; catching remains valid for adding meaningful context while preserving `cause`, translating an error according to project policy, logging at the owning boundary, or guaranteeing cleanup.
+13. Reorder the top-level skill entries in `README.md` and `skills/README.md` so `pragmatic-functional-programming` is first and `typescript` is second. Keep the TypeScript prerequisite wording and nested reference links intact, and move every other skill after the dependent pair.
 
 ## Implementation steps
 
@@ -226,7 +230,8 @@ A semantic audit compared the original `raw-skills/typescript-skill/` guidance w
 17. Revise currency modeling in `data-modeling.md` to require an explicit representation with appropriate precision while treating integer minor units as one example rather than the only valid representation; preserve existing project conventions and domain constraints.
 18. Add timeout semantics to the async reference without taking ownership of timeout policy: explain the difference between ending a wait and aborting underlying work, relate actual cancellation to `AbortSignal` or the API's cancellation mechanism, and keep the foundational skill authoritative for operational policy.
 19. Add the unchanged-rethrow caveat to the functions reference alongside error-cause preservation: avoid redundant catch-and-rethrow blocks, while permitting catches that add context, translate errors, perform boundary-owned reporting, or guarantee cleanup.
-20. After implementation, alignment corrections, and verification are complete, change this plan's status to `Implemented` and update `docs/plans/README.md` in the same change.
+20. Reorder both README skill lists so `pragmatic-functional-programming` is the first top-level entry and `typescript` is the second, preserving descriptions, dependency wording, and nested reference links.
+21. After implementation, alignment corrections, and verification are complete, change this plan's status to `Implemented` and update `docs/plans/README.md` in the same change.
 
 ## Test plan
 
@@ -244,6 +249,11 @@ A semantic audit compared the original `raw-skills/typescript-skill/` guidance w
 - Confirm `data-modeling.md` conditions validation on a trust decision made by `pragmatic-functional-programming` or project guarantees and does not classify all database reads as untrusted.
 - Confirm the entrypoint and references do not independently decide whether invalid domain states should be excluded or whether runtime behavior requires tests.
 - Confirm the skill tree contains only regular files and directories, with no symlinks or special files.
+
+### Documentation verification
+
+- Confirm the first two top-level skill entries in both `README.md` and `skills/README.md` are `pragmatic-functional-programming` and `typescript`, in that order.
+- Confirm every other top-level skill follows those entries, while the TypeScript prerequisite wording and nested reference links remain unchanged.
 
 ### Original-source semantic coverage
 
@@ -364,6 +374,7 @@ Before and after implementation or corrective work, inventory and checksum the r
 - Tooling guidance recommends `strict: true` for new TypeScript projects without silently changing existing-project compiler policy.
 - Manual isolated-fixture review confirms prerequisite ordering, conditional fallback, missing-prerequisite behavior, and precedence for overlapping concerns.
 - Root and skills-level documentation list the new skill and state its dependency on `pragmatic-functional-programming` at an appropriate level of detail.
+- In both README skill lists, `pragmatic-functional-programming` is the first top-level skill and `typescript` is the second; all other top-level skills follow them.
 - A clean installation copies the complete TypeScript skill and records it accurately in the canonical manifest.
 - A repeated installation is idempotent, and existing installer/uninstaller safety behavior remains intact.
 - The complete unit test suite passes.
@@ -373,7 +384,7 @@ Before and after implementation or corrective work, inventory and checksum the r
 
 ## Latest alignment audit
 
-The 2026-11-05 structural, ownership, source-coverage, and semantic audits confirmed the implementation and installation behavior below. Every original rule and checklist item is classified at original-rule granularity with verified target mappings, all alignment findings are resolved, and all acceptance criteria pass:
+The 2026-11-05 structural, ownership, source-coverage, semantic, and documentation-ordering audits confirmed the implementation, installation behavior, and repository documentation below. Every original rule and checklist item is classified at original-rule granularity with verified target mappings, all alignment findings are resolved, and all acceptance criteria pass:
 
 - All 77 unit tests passed.
 - An installation dry run and real temporary installation confirmed:
