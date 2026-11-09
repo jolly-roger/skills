@@ -23,11 +23,11 @@ A centralized repository for distributing shared coding-agent rules, safety poli
   - [JSX Rules](./AGENTS.md#jsx-rules)
   - [README Guidance](./AGENTS.md#readme-guidance)
 - [`skills/`](./skills/README.md) — reusable agent workflows:
-  - [`merge-master`](./skills/merge-master/SKILL.md)
   - [`pragmatic-functional-programming`](./skills/pragmatic-functional-programming/SKILL.md)
+  - [`typescript`](./skills/typescript/SKILL.md) — requires `pragmatic-functional-programming`
+  - [`merge-master`](./skills/merge-master/SKILL.md)
   - [`review`](./skills/review/SKILL.md)
   - [`review-diff`](./skills/review-diff/SKILL.md)
-  - [`typescript`](./skills/typescript/SKILL.md) — requires `pragmatic-functional-programming`
 - [`tools/install.py`](./tools/install.py) — updates the managed section of a workspace’s `AGENTS.md` and copies skills into `.agents/skills/` with manifest-backed tracking while preserving project-specific instructions.
 - [`tools/uninstall.py`](./tools/uninstall.py) — removes managed instructions and exact manifest-verified skill copies from a workspace.
 - [`tests/`](./tests/) — test suite verifying installer and uninstaller updates, repeatability, conflict handling, and preservation of existing workspace content.
