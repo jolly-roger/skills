@@ -3,3 +3,5 @@ __pycache__/
 /.agents/agent-toolkit-manifest.json
 /.agents/jolly-roger-skills-manifest.json
 .obsidian/
+.DS_Store
+raw-skills/

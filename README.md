@@ -7,7 +7,7 @@ A centralized repository for distributing shared coding-agent rules, safety poli
 ## Purpose
 
 - Maintain shared engineering conventions, safety boundaries, and agent instructions in one version-controlled location.
-- Provide reusable skills for code review, branch integration, and pragmatic functional programming.
+- Provide reusable skills for code review, branch integration, pragmatic functional programming, and TypeScript.
 - Install shared instructions without replacing project-specific rules.
 - Copy self-contained skills into workspaces with manifest-backed ownership and local modification safety.
 
@@ -27,6 +27,7 @@ A centralized repository for distributing shared coding-agent rules, safety poli
   - [`pragmatic-functional-programming`](./skills/pragmatic-functional-programming/SKILL.md)
   - [`review`](./skills/review/SKILL.md)
   - [`review-diff`](./skills/review-diff/SKILL.md)
+  - [`typescript`](./skills/typescript/SKILL.md) — requires `pragmatic-functional-programming`
 - [`tools/install.py`](./tools/install.py) — updates the managed section of a workspace’s `AGENTS.md` and copies skills into `.agents/skills/` with manifest-backed tracking while preserving project-specific instructions.
 - [`tools/uninstall.py`](./tools/uninstall.py) — removes managed instructions and exact manifest-verified skill copies from a workspace.
 - [`tests/`](./tests/) — test suite verifying installer and uninstaller updates, repeatability, conflict handling, and preservation of existing workspace content.

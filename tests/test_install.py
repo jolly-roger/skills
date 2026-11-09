@@ -1,6 +1,7 @@
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -41,13 +42,64 @@ class InstallerTests(unittest.TestCase):
 
             for name in (
                 "review", "review-diff", "merge-master",
-                "pragmatic-functional-programming",
+                "pragmatic-functional-programming", "typescript",
             ):
                 skill_dir = Path(directory) / ".agents" / "skills" / name
                 self.assertTrue(skill_dir.is_dir())
                 self.assertFalse(skill_dir.is_symlink())
                 self.assertTrue((skill_dir / "SKILL.md").is_file())
                 self.assertIn(name, manifest.skills)
+
+            # Verify typescript skill details and excluded files
+            ts_dir = Path(directory) / ".agents" / "skills" / "typescript"
+            expected_ts_refs = {
+                "async.md",
+                "data-modeling.md",
+                "functions.md",
+                "modules.md",
+                "tooling.md",
+                "type-design.md",
+                "type-safety.md",
+            }
+            actual_ts_refs = {p.name for p in (ts_dir / "references").iterdir()}
+            self.assertEqual(actual_ts_refs, expected_ts_refs)
+            for ref_name in expected_ts_refs:
+                ref_path = ts_dir / "references" / ref_name
+                self.assertTrue(ref_path.is_file())
+                self.assertFalse(ref_path.is_symlink())
+            self.assertFalse((ts_dir / "references" / "patterns.md").exists())
+            self.assertFalse((ts_dir / "README.md").exists())
+            self.assertFalse((ts_dir / "integrations").exists())
+
+            # Verify every relative Markdown link in the installed TypeScript skill resolves within the skill tree
+            resolved_ts_dir = ts_dir.resolve()
+            for md_file in ts_dir.rglob("*.md"):
+                content = md_file.read_text(encoding="utf-8")
+                for link in re.findall(r"\[[^\]]+\]\(([^)]+)\)", content):
+                    if link.startswith("#") or link.startswith("http://") or link.startswith("https://"):
+                        continue
+                    rel_target = link.split("#")[0]
+                    if not rel_target:
+                        continue
+                    target_file = (md_file.parent / rel_target).resolve()
+                    self.assertTrue(
+                        target_file.is_file(),
+                        f"Broken relative link '{link}' in {md_file.relative_to(ts_dir)}",
+                    )
+                    self.assertTrue(
+                        target_file.is_relative_to(resolved_ts_dir),
+                        f"Link '{link}' in {md_file.relative_to(ts_dir)} resolves outside installed skill tree: {target_file}",
+                    )
+
+            # Verify typescript entries in manifest
+            ts_manifest_paths = {entry.path for entry in manifest.skills["typescript"].entries}
+            self.assertIn("SKILL.md", ts_manifest_paths)
+            self.assertIn("references", ts_manifest_paths)
+            for ref in expected_ts_refs:
+                self.assertIn(f"references/{ref}", ts_manifest_paths)
+            self.assertNotIn("references/patterns.md", ts_manifest_paths)
+            self.assertNotIn("README.md", ts_manifest_paths)
+            self.assertNotIn("integrations", ts_manifest_paths)
 
             # Test repeatability
             second = subprocess.run(command, capture_output=True, text=True, check=True)
