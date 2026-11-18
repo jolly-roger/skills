@@ -1,8 +1,8 @@
-# 🏴‍☠️ Agent Toolkit
+# 🏴‍☠️ Jolly Roger's Skills
 
 *Code by the rules. Sail with the agents.*
 
-A centralized toolkit for building and distributing hierarchical coding-agent skills, shared engineering rules, and workspace installation tooling across Codex and Antigravity projects.
+A centralized repository for building and distributing hierarchical coding-agent skills, shared engineering rules, and workspace installation tooling across Codex and Antigravity projects.
 
 ## Purpose
 
@@ -62,7 +62,7 @@ To remove managed rules and copied skills from a workspace:
 python3 /path/to/skills/tools/uninstall.py --workspace /path/to/workspace
 ```
 
-The uninstaller removes the managed block from the workspace `AGENTS.md` while preserving project-owned rules. If the managed block was the only content, `AGENTS.md` is removed. It removes exact manifest-verified skill copies and provable legacy links from the current checkout. Locally modified skill copies, project-owned skills, and unproven symlinks are preserved with warnings. Clean up removes empty `.agents/skills` and `.agents` directories. Self-uninstallation preserves the repository's authoritative `AGENTS.md`.
+The uninstaller removes the managed block from the workspace `AGENTS.md` while preserving project-owned rules. If the managed block was the only content, `AGENTS.md` is removed. It removes exact manifest-verified skill copies and provable legacy links from the current checkout. Locally modified skill copies, project-owned skills, and unproven symlinks are preserved with warnings. Cleanup removes empty `.agents/skills` and `.agents` directories. Self-uninstallation preserves the repository's authoritative `AGENTS.md`.
 
 Both `tools/install.py` and `tools/uninstall.py` support `--dry-run` to preview changes and `--yes` for unattended execution; see `--help` on each tool for option details.
 
