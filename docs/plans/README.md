@@ -7,6 +7,6 @@
 | P-00003 | [Copied skill installation](./P-00003-copied-skill-installation.md) | Implemented | 2026-11-04 |
 | P-00004 | [Repository identity migration](./P-00004-repository-identity-migration.md) | Implemented | 2026-11-04 |
 | P-00005 | [TypeScript skill integration](./P-00005-typescript-skill-integration.md) | Implemented | 2026-11-05 |
-| P-00006 | [JavaScript skill integration](./P-00006-javascript-skill-integration.md) | Proposed | 2026-11-17 |
+| P-00006 | [JavaScript skill integration](./P-00006-javascript-skill-integration.md) | Implemented | 2026-11-17 |
 
 Use [the plan template](./TEMPLATE.md) when creating an implementation plan. When a plan status changes, update both its document and this table in the same change.

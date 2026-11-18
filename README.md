@@ -1,15 +1,15 @@
-# 🏴‍☠️ Jolly Roger's Skills
+# 🏴‍☠️ Agent Toolkit
 
 *Code by the rules. Sail with the agents.*
 
-A centralized repository for distributing shared coding-agent rules, safety policies, and reusable workflow skills across Codex and Antigravity workspaces.
+A centralized toolkit for building and distributing hierarchical coding-agent skills, shared engineering rules, and workspace installation tooling across Codex and Antigravity projects.
 
 ## Purpose
 
-- Maintain shared engineering conventions, safety boundaries, and agent instructions in one version-controlled location.
-- Provide reusable skills for code review, branch integration, pragmatic functional programming, JavaScript, and TypeScript.
-- Install shared instructions without replacing project-specific rules.
-- Copy self-contained skills into workspaces with manifest-backed ownership and local modification safety.
+- **Center engineering on functional programming** as the primary focus and shared foundation for code quality, correctness, and maintainability.
+- **Build skills hierarchically** so specialized capabilities layer cleanly on top of foundational ones (for example: `pragmatic-functional-programming` → `javascript` → `typescript`), alongside focused workflow skills for code review and branch integration.
+- **Standardize agent behavior** by maintaining shared conventions, safety boundaries, and instructions in one version-controlled repository.
+- **Install safely into workspaces** by updating managed `AGENTS.md` sections and copying self-contained skills with manifest-backed ownership—preserving project-specific rules and local modifications.
 
 ## Repository contents
 
