@@ -1,6 +1,8 @@
-# 🏴‍☠️ Jolly Roger's Skills
-
-*Code by the rules. Sail with the agents.*
+<div align="center">
+  <img src="./assets/logo.svg" alt="Jolly Roger's Skills Logo" width="120" height="120" />
+  <h1>Jolly Roger's Skills</h1>
+  <p><em>Code by the rules. Sail with the agents.</em></p>
+</div>
 
 A centralized repository for building and distributing hierarchical coding-agent skills, shared engineering rules, and workspace installation tooling across Codex and Antigravity projects.
 
