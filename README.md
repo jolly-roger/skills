@@ -7,7 +7,7 @@ A centralized repository for distributing shared coding-agent rules, safety poli
 ## Purpose
 
 - Maintain shared engineering conventions, safety boundaries, and agent instructions in one version-controlled location.
-- Provide reusable skills for code review, branch integration, pragmatic functional programming, and TypeScript.
+- Provide reusable skills for code review, branch integration, pragmatic functional programming, JavaScript, and TypeScript.
 - Install shared instructions without replacing project-specific rules.
 - Copy self-contained skills into workspaces with manifest-backed ownership and local modification safety.
 
@@ -15,6 +15,7 @@ A centralized repository for distributing shared coding-agent rules, safety poli
 
 - [`AGENTS.md`](./AGENTS.md) — authoritative shared development conventions, safety boundaries, and documentation guidance:
   - [Pragmatic Functional Programming Rules](./AGENTS.md#pragmatic-functional-programming-rules)
+  - [JavaScript Rules](./AGENTS.md#javascript-rules)
   - [TypeScript Rules](./AGENTS.md#typescript-rules)
   - [Git Safety](./AGENTS.md#git-safety)
   - [Jira Safety](./AGENTS.md#jira-safety)
@@ -24,7 +25,8 @@ A centralized repository for distributing shared coding-agent rules, safety poli
   - [README Guidance](./AGENTS.md#readme-guidance)
 - [`skills/`](./skills/README.md) — reusable agent workflows:
   - [`pragmatic-functional-programming`](./skills/pragmatic-functional-programming/SKILL.md)
-  - [`typescript`](./skills/typescript/SKILL.md) — requires `pragmatic-functional-programming`
+  - [`javascript`](./skills/javascript/SKILL.md) — builds on `pragmatic-functional-programming`
+  - [`typescript`](./skills/typescript/SKILL.md) — requires `pragmatic-functional-programming` and `javascript`
   - [`merge-master`](./skills/merge-master/SKILL.md)
   - [`review`](./skills/review/SKILL.md)
   - [`review-diff`](./skills/review-diff/SKILL.md)

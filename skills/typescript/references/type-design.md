@@ -26,7 +26,7 @@ Checking `state.status === 'success'` narrows `state` to the success variant and
 
 ## Non-mutating parameter contracts
 
-In TypeScript, `readonly T[]` and `ReadonlyArray<T>` express at compile time that a function will not mutate caller-supplied collections:
+In TypeScript, `readonly T[]` and `ReadonlyArray<T>` express at compile time that a function will not mutate caller-supplied collections (runtime non-mutating copy semantics such as `toSorted()` are governed by the `javascript` skill `objects-and-collections`, subject to the project's `ES2023+` `tsconfig.json` target/lib):
 
 ```ts
 function sortedNames(users: readonly { name: string }[]): string[] {

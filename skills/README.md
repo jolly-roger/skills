@@ -9,7 +9,14 @@ Reusable workflows discovered by Codex and Antigravity when installed into a wor
   - [Architecture and boundaries](./pragmatic-functional-programming/references/architecture.md)
   - [Composition and state](./pragmatic-functional-programming/references/composition-and-state.md)
   - [Errors and testing](./pragmatic-functional-programming/references/errors-and-testing.md)
-- [`typescript`](./typescript/SKILL.md) — specializes type modeling, safety, runtime boundaries, async execution, and tooling for TypeScript and TSX, requiring `pragmatic-functional-programming` as a foundational prerequisite. Includes supplemental reference guides:
+- [`javascript`](./javascript/SKILL.md) — provides canonical ECMAScript language semantics, runtime boundary validation, object/collection ownership, error chains, async lifecycles, and ES module guidance, building on `pragmatic-functional-programming` as Tier 1 foundation and serving as Tier 2 base for JavaScript-derived specializations. Includes supplemental reference guides:
+  - [Values and runtime validation](./javascript/references/values-and-validation.md)
+  - [Objects and collections](./javascript/references/objects-and-collections.md)
+  - [Functions and errors](./javascript/references/functions-and-errors.md)
+  - [Async and lifecycle](./javascript/references/async-and-lifecycle.md)
+  - [ES modules and host boundaries](./javascript/references/modules-and-boundaries.md)
+  - [Verification and contracts](./javascript/references/verification-and-contracts.md)
+- [`typescript`](./typescript/SKILL.md) — specializes type modeling, safety, runtime boundaries, async execution, and tooling for TypeScript and TSX, requiring `pragmatic-functional-programming` and `javascript` as upstream foundations. Includes supplemental reference guides:
   - [Type design](./typescript/references/type-design.md)
   - [Type safety and narrowing](./typescript/references/type-safety.md)
   - [Functions, signatures, and flow](./typescript/references/functions.md)

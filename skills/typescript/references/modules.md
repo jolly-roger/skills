@@ -1,6 +1,6 @@
 # Modules and dependency boundaries
 
-This reference explains TypeScript mechanisms for module resolution, type-only imports, and package surface boundaries. Architectural separation and dependency injection strategies are established by `pragmatic-functional-programming`.
+This reference explains TypeScript mechanisms for module resolution, type-only imports, and package surface boundaries. Architectural separation, dependency injection, and whether a curated public barrel is appropriate are established by `pragmatic-functional-programming`. ES module runtime semantics—including live bindings, evaluation order, TDZ, top-level-await cycles, and circular initialization—are governed by the `javascript` skill (`modules-and-boundaries`).
 
 ## Module conventions and cohesion
 
@@ -27,8 +27,8 @@ This guarantees that the import will be completely elided during compilation, pr
 - **Resolution modes**: Respect the project's `moduleResolution` setting in `tsconfig.json` (such as `NodeNext`, `Bundler`, or `Node10`).
 - **File extensions**: In `NodeNext` ESM projects, TypeScript requires explicit `.js` extensions on relative import paths even when referencing `.ts` source files. Follow existing project conventions.
 
-## Barrel exports and cycles
+## Barrel exports and type-surface boundaries
 
-- **Internal modules**: Prefer direct file imports (`import { OrderService } from '../services/order-service.js'`) for internal cross-module references. Barrel files (`index.ts`) that re-export multiple siblings frequently introduce circular initialization dependencies and runtime `undefined` values.
-- **Public package boundaries**: Reserve barrel exports for curated public entry points of packages or distinct subsystems.
-- **Exported type surface**: Keep exported types and interfaces minimal. Avoid exporting internal helpers, temporary shapes, or private contracts without consumers.
+- **Internal modules**: Prefer direct file imports (`import { OrderService } from '../services/order-service.js'`) for internal cross-module references. Runtime circular-initialization hazards of barrel re-exports are governed by the `javascript` skill (`modules-and-boundaries`); in TypeScript, barrels also widen compiler dependency graphs and can pull unintended type declarations into downstream builds.
+- **Public package boundaries**: When `pragmatic-functional-programming` favors a curated public entry point for a package or subsystem, use explicit exports and `export type` to keep the public type surface minimal.
+- **Exported type surface**: Avoid exporting internal helpers, temporary shapes, or private contracts without consumers.

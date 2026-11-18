@@ -1,6 +1,6 @@
 # Domain models and runtime boundaries
 
-This reference explains TypeScript mechanisms for parsing external data into domain types, handling type erasure, and modeling domain concepts. The determination of trust boundaries and persistence guarantees is owned by `pragmatic-functional-programming`.
+This reference explains TypeScript mechanisms for parsing external data into domain types, handling type erasure, and modeling domain concepts. The determination of trust boundaries and persistence guarantees is owned by `pragmatic-functional-programming`. ECMAScript runtime parsing, coercion, and prototype-pollution guards are owned by the `javascript` skill (`values-and-validation` and `verification-and-contracts`).
 
 ## Domain concepts: time, currency, identifiers, and optionality
 

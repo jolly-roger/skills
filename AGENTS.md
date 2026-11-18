@@ -17,11 +17,21 @@ Before changing, generating, or reviewing code, read the `pragmatic-functional-p
 
 Prioritize correctness, project conventions, readability, maintainability, simplicity, and testability over functional purity.
 
+## JavaScript Rules
+
+For tasks that write, modify, test, or review JavaScript (`.js`, `.jsx`, `.mjs`, `.cjs`) or JSDoc-typed JavaScript, and for ECMAScript runtime semantics used by TypeScript/TSX and other JavaScript-ecosystem specializations, load and apply `pragmatic-functional-programming` first as foundational guidance, then read and apply the `javascript` skill when it is accessible.
+
+`pragmatic-functional-programming` has precedence for general engineering decisions; `javascript` is the canonical ECMAScript base for language semantics, runtime validation, ownership, and async lifecycles. Pair `javascript` with separate runtime, framework, or TypeScript skills (`.ts`, `.tsx`) for host APIs, UI conventions, or static type-system rules. Consult the skill's references for the behavior being changed, preserve observable contracts unless explicitly requested, and verify changes through deterministic tests and the project's existing checks.
+
+If `pragmatic-functional-programming` is unavailable, do not apply `javascript`.
+
 ## TypeScript Rules
 
-For every TypeScript and TSX coding task, load and apply `pragmatic-functional-programming` first as foundational guidance, then read and apply the `typescript` skill when it is accessible. Consult its reference documents selectively as relevant.
+For every TypeScript and TSX coding task, load and apply `pragmatic-functional-programming` first, `javascript` second, and `typescript` third when accessible. Consult each skill's reference documents selectively as relevant.
 
-The `pragmatic-functional-programming` skill has precedence wherever the two skills overlap. If `pragmatic-functional-programming` is unavailable, do not apply either the `typescript` skill or its TypeScript fallback rules.
+`pragmatic-functional-programming` owns general engineering decisions, `javascript` owns ECMAScript runtime semantics, and `typescript` owns static type-system rules. On conflict, `pragmatic-functional-programming` has precedence over `javascript`, and `javascript` has precedence over `typescript` for runtime/ECMAScript semantics.
+
+If `pragmatic-functional-programming` is unavailable, do not apply `javascript`, `typescript`, or their fallback rules. If `javascript` is unavailable, do not apply or claim to apply the dependent `typescript` skill, but retain the mandatory TypeScript modeling policies and fallback safety rules below.
 
 Apply these mandatory policies:
 
@@ -31,7 +41,7 @@ Apply these mandatory policies:
 - Permit a narrow utility-type use in a local adapter, generic helper, or third-party integration only when it is clearer than an explicit duplicate contract and does not weaken domain semantics.
 - Prefer shallow, cohesive models, but preserve meaningful nested concepts rather than flattening them mechanically.
 
-When `pragmatic-functional-programming` is available but the `typescript` skill is not, apply these fallback rules:
+When `pragmatic-functional-programming` and `javascript` are available but the `typescript` skill is not (or when `javascript` is unavailable per the rule above), apply these fallback rules:
 
 - Do not introduce `any`, TypeScript suppression directives, or weaker compiler or linter settings merely to silence errors.
 - Use `unknown`, narrowing, or runtime validation when a value crosses a trust boundary identified by `pragmatic-functional-programming`; do not rely on a TypeScript assertion as runtime validation.

@@ -1,14 +1,16 @@
 # Async, concurrency, and cancellation
 
-This reference explains the observable behavior and mechanics of TypeScript Promise APIs, cancellation tokens, and async control flow. Concurrency policy, execution ordering, concurrency bounds, and resource lifecycle rules are governed by `pragmatic-functional-programming`. Floating promise prevention is governed canonically by `AGENTS.md` under `## TypeScript Rules`.
+This reference explains TypeScript typing and lint implications for Promise APIs, cancellation tokens, and async control flow. Concurrency policy, execution ordering, concurrency bounds, and resource lifecycle rules are governed by `pragmatic-functional-programming`. ECMAScript runtime semantics for `async`/`await`, Promise combinators, `forEach`, `return await`, `using`, and cancellation are governed by the `javascript` skill (`async-and-lifecycle`). Floating promise prevention is governed canonically by `AGENTS.md` under `## TypeScript Rules`.
 
 ## async/await for multi-step operations
 
-Using `async`/`await` syntax for multi-step asynchronous operations and error handling provides linear, readable control flow and clear exception handling via `try/catch`, avoiding deeply nested Promise `.then()` and `.catch()` chains.
+Preferring `async`/`await` with `try`/`catch` over deeply nested `.then()`/`.catch()` chains for multi-step asynchronous operations is governed by `pragmatic-functional-programming` (readability) and the `javascript` skill (`async-and-lifecycle`). In TypeScript, `async` functions infer or enforce `Promise<T>` return types directly across linear `await` steps.
 
-## Promise.all observable semantics
+## Promise.all and Promise.allSettled typing
 
-`Promise.all` aggregates an iterable of Promises into a single Promise:
+Runtime fail-fast, sibling-continuation, and settlement behavior for `Promise.all` and `Promise.allSettled` are governed by the `javascript` skill (`async-and-lifecycle`). TypeScript models their return values statically:
+
+- **`Promise.all` tuple inference**: Preserves a strongly typed tuple matching each input Promise (`[Profile, Permissions]`):
 
 ```ts
 const [profile, permissions] = await Promise.all([
@@ -17,13 +19,9 @@ const [profile, permissions] = await Promise.all([
 ]);
 ```
 
-- **Fulfillment**: Resolves when all input promises have fulfilled, returning a strongly typed tuple or array matching the types of the input promises.
-- **Rejection behavior**: Rejects immediately upon the first input promise rejection (fail-fast).
-- **Execution note**: `Promise.all` does not cancel or terminate remaining in-flight operations when one rejects; uncancelled sibling operations continue executing to completion in the background.
-
-## Promise.allSettled observable semantics
-
-`Promise.allSettled` waits for every input promise to complete, regardless of individual fulfillment or rejection:
+- **`Promise.allSettled` discriminated results**: Resolves to an array of `PromiseSettledResult<T>` discriminated union members:
+  - `{ status: 'fulfilled'; value: T }`
+  - `{ status: 'rejected'; reason: any }` (`PromiseRejectedResult.reason` is declared as `any` in TypeScript's standard library; treat or narrow `reason` as `unknown` before reading properties)
 
 ```ts
 const results = await Promise.allSettled([
@@ -31,11 +29,6 @@ const results = await Promise.allSettled([
   taskB(),
 ]);
 ```
-
-- **Return shape**: Resolves to an array of discriminated `PromiseSettledResult<T>` objects:
-  - `{ status: 'fulfilled', value: T }`
-  - `{ status: 'rejected', reason: any }`
-- **Use case**: Allows inspecting the individual outcome of each operation without premature termination upon a single failure.
 
 ## Floating promises and type-aware detection
 
@@ -81,28 +74,10 @@ async function fetchResource(url: string, signal?: AbortSignal): Promise<unknown
 
 Passing `signal` down to underlying libraries (such as `fetch` or Node.js APIs) ensures that pending network requests, socket allocations, or abortable workflows terminate when cancelled.
 
-### Timeout semantics vs aborting work
+### Timeout typing and compiler compatibility
 
-When implementing or consuming timeouts, distinguish between ending caller waiting and aborting the underlying operation:
-- A `Promise.race` against a timer only stops waiting for the promise; the in-flight asynchronous operation continues executing in the background.
-- To abort the underlying work, tie the timeout directly to an `AbortSignal` (such as `AbortSignal.timeout(ms)` or wiring a timer to `AbortController.abort()`) and pass the signal to cancellable operations.
-- Operational timeout policy, deadlines, and fallback decisions remain governed by `pragmatic-functional-programming`.
+Runtime differences between `Promise.race` timeouts and cooperative cancellation are governed by the `javascript` skill (`async-and-lifecycle`). In TypeScript, type cancellation parameters explicitly as `signal?: AbortSignal` and verify that static helpers such as `AbortSignal.timeout(ms)` match the project's configured `tsconfig.json` `lib` / `target` baseline. Operational timeout policy, deadlines, and fallback decisions remain governed by `pragmatic-functional-programming`.
 
-## The return await pattern
+## return await and type-aware lint rules
 
-In an `async` function, returning a Promise directly versus using `return await` has distinct behavior inside `try/catch` or `try/finally` blocks:
-
-```ts
-async function loadUserData(id: string): Promise<User> {
-  try {
-    return await userRepository.findById(id);
-  } catch (error) {
-    logger.error('Failed to load user', { id, error });
-    throw error;
-  }
-}
-```
-
-- **Inside try/catch**: `return await` unwraps the Promise before returning, allowing the local `catch` or `finally` block to intercept any rejection. Without `await`, the unresolved Promise is returned directly to the caller, bypassing the local `catch` block.
-- **Stack traces**: `return await` ensures that the current function is preserved in asynchronous stack traces when the Promise rejects, aiding debugging in environments where un-awaited Promise returns truncate call frames.
-- **Outside try/catch**: Outside of `try` blocks, returning the Promise directly (`return userRepository.findById(id);`) is idiomatic when no local error handling or stack-trace preservation is required.
+Runtime `return await` behavior inside `try/catch` and `try/finally` is governed by the `javascript` skill (`async-and-lifecycle`). In TypeScript projects using `typescript-eslint`, rules such as `@typescript-eslint/return-await` align with that runtime distinction—requiring `return await` inside `try` blocks so rejections are caught locally and stack frames are preserved, while allowing direct `Promise<T>` returns outside `try` blocks.

@@ -3,18 +3,20 @@ name: typescript
 description: >
   Apply pragmatic, maintainable TypeScript practices for type modeling,
   safety, runtime boundaries, async execution, modules, and tooling. Requires
-  the pragmatic-functional-programming skill as a foundation and is not intended
-  for standalone use.
+  the pragmatic-functional-programming and javascript skills as foundations and
+  is not intended for standalone use.
 ---
 # Pragmatic TypeScript
 
-Apply this guidance to TypeScript and TSX code, including new code, modifications, bug fixes, type definitions, and code reviews. This skill is a dependent language specialization; it supplies TypeScript-specific mechanisms, explanations, and tooling that build on foundational engineering principles.
+Apply this guidance to TypeScript and TSX code, including new code, modifications, bug fixes, type definitions, and code reviews. This skill is a Tier 3 static type-system specialization; it supplies TypeScript-specific mechanisms, explanations, and tooling that build on `pragmatic-functional-programming` (Tier 1) and `javascript` (Tier 2).
 
 ## Prerequisite and precedence
 
-1. **Prerequisite**: For every TypeScript or TSX coding task, load and apply `pragmatic-functional-programming` first as the foundation for data, calculations, actions, mutation ownership, effects, dependencies, domain modeling, error policy, and general testing.
-2. **Precedence**: `pragmatic-functional-programming` is authoritative and has higher priority wherever both skills address the same concern. This skill refines how a general principle is expressed in TypeScript, but does not relax, override, or independently redefine foundational principles. TypeScript-specific guidance remains authoritative where the foundational skill has no language-specific rule.
-3. **Missing prerequisite**: If `pragmatic-functional-programming` cannot be loaded, report that the TypeScript skill's required foundation is unavailable. Do not apply or claim to have applied the TypeScript skill or its TypeScript fallback rules. Continue only under higher-priority instructions and ordinary project guidance.
+1. **Prerequisites**: For every TypeScript or TSX coding task, load and apply `pragmatic-functional-programming` first (general engineering decisions) and `javascript` second (canonical ECMAScript runtime semantics and mechanisms) before applying `typescript`.
+2. **Precedence**: `pragmatic-functional-programming` has higher priority over `javascript` on general engineering decisions, and `javascript` has higher priority over `typescript` for ECMAScript runtime semantics. `typescript` is authoritative for static type-system modeling, compile-time narrowing, `import type`, compiler strictness, and type-aware tooling.
+3. **Missing prerequisites**:
+   - If `pragmatic-functional-programming` cannot be loaded, report that the required Tier 1 foundation is unavailable and do not apply or claim to have applied `javascript`, `typescript`, or their fallback rules.
+   - If `javascript` cannot be loaded, report that the required Tier 2 ECMAScript foundation is unavailable and do not apply or claim to have applied the dependent `typescript` skill, while retaining the mandatory `AGENTS.md` TypeScript modeling policies and fallback safety rules.
 
 ## Policy alignment
 

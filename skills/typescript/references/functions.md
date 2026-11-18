@@ -1,6 +1,6 @@
 # Functions, signatures, and flow
 
-This reference explains TypeScript mechanisms for function signature typing, type inference, exhaustive union handling, and async return delegation. General functional decomposition, naming, and error classification are owned by `pragmatic-functional-programming`.
+This reference explains TypeScript mechanisms for function signature typing, type inference, exhaustive union handling, and async return typing. General functional decomposition, API-shape decisions, and error policy are owned by `pragmatic-functional-programming`, while ECMAScript runtime behavior (such as `??` vs `||`, `Error.cause`, and `return await` unwinding) is owned by the `javascript` skill (`values-and-validation`, `functions-and-errors`, and `async-and-lifecycle`).
 
 ## Signature typing and local inference
 
@@ -9,7 +9,7 @@ This reference explains TypeScript mechanisms for function signature typing, typ
 
 ## Parameter objects for ambiguous options
 
-When a function accepts several optional parameters, flags, or configuration values, using a parameter object interface prevents positional argument errors:
+When `pragmatic-functional-programming` favors a parameter object for several optional parameters, flags, or configuration values, model the contract with an explicit interface (following `javascript` `functions-and-errors` for destructuring defaults):
 
 ```ts
 interface UserSearchOptions {
@@ -38,34 +38,20 @@ function processUser(user: User | null): string {
 }
 ```
 
-## Nullish coalescing (??) versus logical OR (||)
+## Nullish coalescing (??) with optional types
 
-In TypeScript and JavaScript:
-- `a ?? b` checks only for `null` and `undefined`.
-- `a || b` checks for any falsy value (`null`, `undefined`, `""`, `0`, `false`, `NaN`).
-
-Use `??` when empty strings or zero are valid domain inputs that must be preserved:
+ECMAScript `??` vs `||` semantics are governed by the `javascript` skill (`values-and-validation`). In TypeScript, `??` narrows `T | null | undefined` to `T` while preserving valid falsy values (`0`, `""`, `false`):
 
 ```ts
 function formatTitle(title?: string): string {
-  // Using ?? ensures "" is preserved if passed, rather than replaced by fallback
+  // Narrows `string | undefined` to `string` without discarding `""`
   return title ?? 'Untitled';
 }
 ```
 
-## Error handling and cause preservation
+## Error handling and caught-value typing
 
-- **Avoid catching solely to rethrow unchanged**: Do not catch errors solely to rethrow them immediately without adding value. Catching is appropriate when enriching errors with meaningful context via `{ cause: error }`, translating external exceptions into domain errors, performing boundary-owned logging, or guaranteeing resource cleanup.
-- **Preserving error cause**: When wrapping errors with additional context, use the standard `cause` option to preserve original diagnostic details:
-
-```ts
-try {
-  parseConfigFile(filePath);
-} catch (error) {
-  throw new Error(`Failed to load config from ${filePath}`, { cause: error });
-}
-```
-Preserving `{ cause: error }` retains original stack traces and diagnostic details across abstraction boundaries.
+Error-wrapping mechanics (`new Error(..., { cause })`, `AggregateError`) and avoiding catch-and-rethrow are governed by the `javascript` skill (`functions-and-errors`). In TypeScript, `useUnknownInCatchVariables` (enabled by `strict: true`) types caught values as `unknown`, requiring narrowing before accessing properties such as `message` or `cause`.
 
 ## Result-style unions for expected failures
 
@@ -123,27 +109,12 @@ function assertString(value: unknown): asserts value is string {
 
 Following a call to `assertString(input)`, TypeScript narrows `input` to `string` in subsequent code.
 
-## Async return delegation
+## Async return typing
 
-When a function merely forwards a Promise from another call without intermediate transformations or local error handling, returning the Promise directly avoids redundant `async` and `await` wrapping:
+Runtime `return await` vs direct-return behavior inside `try/catch` and `try/finally` is governed by the `javascript` skill (`async-and-lifecycle`). In TypeScript, both forms satisfy a `Promise<T>` return signature; avoid redundant `async` wrappers on pure forwarding functions so inferred or explicit `Promise<T>` types remain clean:
 
 ```ts
-// Direct delegation
 const getUser = (id: string): Promise<User> => {
   return userRepository.findById(id);
 };
 ```
-
-When local error interception is necessary within a `try/catch` block, `return await` ensures rejections are caught locally before returning:
-
-```ts
-async function loadUserData(id: string): Promise<User> {
-  try {
-    return await userRepository.findById(id);
-  } catch (error) {
-    logger.error('Failed to load user', { id, error });
-    throw error;
-  }
-}
-```
-Without `await` inside the `try` block, an unhandled rejection would bypass the local `catch` handler and bubble directly to the caller.

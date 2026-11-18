@@ -33,6 +33,11 @@ class InstallerTests(unittest.TestCase):
             self.assertIn("Installed skills", first.stdout)
             self.assertIn("# Project rules\n\nKeep this rule.", installed)
             self.assertIn(CANONICAL_IDENTITY.begin_marker, installed)
+            self.assertIn("## JavaScript Rules", installed)
+            self.assertIn(
+                "load and apply `pragmatic-functional-programming` first, `javascript` second, and `typescript` third",
+                installed,
+            )
             self.assertNotIn("agent-toolkit", installed)
             self.assertTrue(manifest_file.is_file())
 
@@ -42,7 +47,7 @@ class InstallerTests(unittest.TestCase):
 
             for name in (
                 "review", "review-diff", "merge-master",
-                "pragmatic-functional-programming", "typescript",
+                "pragmatic-functional-programming", "javascript", "typescript",
             ):
                 skill_dir = Path(directory) / ".agents" / "skills" / name
                 self.assertTrue(skill_dir.is_dir())
@@ -50,8 +55,70 @@ class InstallerTests(unittest.TestCase):
                 self.assertTrue((skill_dir / "SKILL.md").is_file())
                 self.assertIn(name, manifest.skills)
 
+            # Verify javascript skill details, excluded files, and internal relative links
+            js_dir = Path(directory) / ".agents" / "skills" / "javascript"
+            expected_js_refs = {
+                "async-and-lifecycle.md",
+                "functions-and-errors.md",
+                "modules-and-boundaries.md",
+                "objects-and-collections.md",
+                "values-and-validation.md",
+                "verification-and-contracts.md",
+            }
+            actual_js_refs = {p.name for p in (js_dir / "references").iterdir()}
+            self.assertEqual(actual_js_refs, expected_js_refs)
+            for ref_name in expected_js_refs:
+                ref_path = js_dir / "references" / ref_name
+                self.assertTrue(ref_path.is_file())
+                self.assertFalse(ref_path.is_symlink())
+            self.assertFalse((js_dir / "AGENTS.example.md").exists())
+
+            resolved_js_dir = js_dir.resolve()
+            for md_file in js_dir.rglob("*.md"):
+                content = md_file.read_text(encoding="utf-8")
+                for link in re.findall(r"\[[^\]]+\]\(([^)]+)\)", content):
+                    if link.startswith("#") or link.startswith("http://") or link.startswith("https://"):
+                        continue
+                    rel_target = link.split("#")[0]
+                    if not rel_target:
+                        continue
+                    target_file = (md_file.parent / rel_target).resolve()
+                    self.assertTrue(
+                        target_file.is_file(),
+                        f"Broken relative link '{link}' in {md_file.relative_to(js_dir)}",
+                    )
+                    self.assertTrue(
+                        target_file.is_relative_to(resolved_js_dir),
+                        f"Link '{link}' in {md_file.relative_to(js_dir)} resolves outside installed skill tree: {target_file}",
+                    )
+
+            js_manifest_paths = {entry.path for entry in manifest.skills["javascript"].entries}
+            self.assertIn("SKILL.md", js_manifest_paths)
+            self.assertIn("references", js_manifest_paths)
+            for ref in expected_js_refs:
+                self.assertIn(f"references/{ref}", js_manifest_paths)
+            self.assertNotIn("AGENTS.example.md", js_manifest_paths)
+
             # Verify typescript skill details and excluded files
             ts_dir = Path(directory) / ".agents" / "skills" / "typescript"
+            ts_skill_md = (ts_dir / "SKILL.md").read_text(encoding="utf-8")
+            self.assertIn(
+                "Requires\n  the pragmatic-functional-programming and javascript skills as foundations",
+                ts_skill_md,
+            )
+            self.assertIn("## Prerequisite and precedence", ts_skill_md)
+            prereq_section = ts_skill_md.split("## Prerequisite and precedence", 1)[1].split("\n## ", 1)[0]
+            self.assertIn(
+                "load and apply `pragmatic-functional-programming` first (general engineering decisions) "
+                "and `javascript` second (canonical ECMAScript runtime semantics and mechanisms) "
+                "before applying `typescript`",
+                prereq_section,
+            )
+            pfp_idx = prereq_section.index("`pragmatic-functional-programming`")
+            js_idx = prereq_section.index("`javascript`")
+            ts_idx = prereq_section.index("`typescript`")
+            self.assertLess(pfp_idx, js_idx)
+            self.assertLess(js_idx, ts_idx)
             expected_ts_refs = {
                 "async.md",
                 "data-modeling.md",
